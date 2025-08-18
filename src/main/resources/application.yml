@@ -1,0 +1,164 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://10.10.11.252:5432/omni_core_db
+    username: postgres
+    password: Password@123
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 20000
+      idle-timeout: 300000
+      max-lifetime: 1200000
+      leak-detection-threshold: 60000
+
+  redis:
+    host: 10.10.11.252
+    port: 6379
+    database: 2
+    timeout: 2000ms
+    lettuce:
+      pool:
+        max-active: 8
+        max-idle: 8
+        min-idle: 0
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    properties:
+      hibernate:
+        jdbc:
+          batch_size: 20
+        order_inserts: true
+        order_updates: true
+
+  cache:
+    type: redis
+    redis:
+      time-to-live: 600000 # 10 minutes
+
+# Resilience4j Configuration
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        registerHealthIndicator: true
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        waitDurationInOpenState: 5s
+        failureRateThreshold: 50
+        eventConsumerBufferSize: 10
+    instances:
+      authentication:
+        baseConfig: default
+        failureRateThreshold: 60
+      BBPS-fetchBill:
+        baseConfig: default
+        waitDurationInOpenState: 10s
+      ISO8583-purchase:
+        baseConfig: default
+        failureRateThreshold: 40
+
+  retry:
+    configs:
+      default:
+        maxAttempts: 3
+        waitDuration: 1000ms
+        exponentialBackoffMultiplier: 2
+        enableExponentialBackoff: true
+    instances:
+      authentication:
+        baseConfig: default
+        maxAttempts: 2
+        waitDuration: 500ms
+      BBPS-fetchBill:
+        baseConfig: default
+        maxAttempts: 2
+      ISO8583-purchase:
+        baseConfig: default
+        maxAttempts: 1
+
+  timelimiter:
+    configs:
+      default:
+        timeoutDuration: 10s
+        cancelRunningFuture: true
+    instances:
+      authentication:
+        timeoutDuration: 2s
+      BBPS-fetchBill:
+        timeoutDuration: 3s
+      ISO8583-purchase:
+        timeoutDuration: 5s
+
+# Channel specific configurations
+channels:
+  BBPS:
+    timeout: 3000
+    maxRetries: 2
+    circuitBreaker: true
+    batchSize: 100
+  ISO8583:
+    timeout: 5000
+    maxRetries: 1
+    circuitBreaker: true
+    batchSize: 50
+  UPI:
+    timeout: 6000
+    maxRetries: 2
+    circuitBreaker: true
+    batchSize: 200
+
+# Authentication Configuration
+auth:
+  jwt:
+    secret: ${JWT_SECRET:my-very-secure-jwt-secret-key-that-should-be-at-least-256-bits}
+    expirationMs: 3600000 # 1 hour
+  lockout:
+    maxFailedAttempts: 3
+    lockoutDurationMinutes: 15
+  cache:
+    ttl: 300 # 5 minutes
+
+# Logging Configuration
+logging:
+  level:
+    com.concerto.omnichannel: DEBUG
+    org.springframework.web: INFO
+    org.springframework.security: DEBUG
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level [%X{correlationId}] [%X{channel}] %logger{36} - %msg%n"
+
+# Management endpoints
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,info,prometheus
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+
+# Custom application properties
+app:
+  transaction:
+    defaultTimeout: 30000
+    maxConcurrentTransactions: 1000
+  security:
+    encryption:
+      algorithm: AES/GCM/NoPadding
+      keyLength: 256
+  monitoring:
+    enabled: true
+    alertThreshold: 95
