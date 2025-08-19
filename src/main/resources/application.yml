@@ -26,7 +26,6 @@ spring:
     hibernate:
       ddl-auto: update
     show-sql: false
-    database-platform: org.hibernate.dialect.PostgreSQLDialect
     properties:
       hibernate:
         jdbc:
@@ -162,3 +161,32 @@ app:
   monitoring:
     enabled: true
     alertThreshold: 95
+
+# ISO8583 Configuration
+iso8583:
+  enabled: true
+  packager:
+    type: ascii
+    ascii:
+      config: iso87ascii.xml
+    binary:
+      config: iso87binary.xml
+
+# External Switch Configuration
+switch:
+  default:
+    host: 10.10.10.166
+    port: 1276
+  connection:
+    timeout: 5000
+  read:
+    timeout: 30000
+
+# Connector Configuration
+connector:
+  timeouts:
+    ISO8583: 5000
+    BBPS: 3000
+    UPI: 6000
+    PG: 8000
+    default: 10000

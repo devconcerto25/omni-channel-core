@@ -1,0 +1,206 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE isopackager SYSTEM "genericpackager.dtd">
+<!-- ISO8583 Binary Packager Configuration (ISO87B) -->
+<isopackager>
+    <isofield
+            id="0"
+            length="4"
+            name="MESSAGE TYPE INDICATOR"
+            class="org.jpos.iso.IFB_NUMERIC"/>
+    <isofield
+            id="1"
+            length="8"
+            name="BIT MAP"
+            class="org.jpos.iso.IFB_BITMAP"/>
+    <isofield
+            id="2"
+            length="19"
+            name="PAN - PRIMARY ACCOUNT NUMBER"
+            class="org.jpos.iso.IFB_LLNUM"/>
+    <isofield
+            id="3"
+            length="6"
+            name="PROCESSING CODE"
+            class="org.jpos.iso.IFB_NUMERIC"/>
+    <isofield
+            id="4"
+            length="12"
+            name="AMOUNT, TRANSACTION"
+            class="org.jpos.iso.IFB_NUMERIC"/>
+    <isofield
+            id="5"
+            length="12"
+            name="AMOUNT, SETTLEMENT"
+            class="org.jpos.iso.IFB_NUMERIC"/>
+    <isofield
+            id="6"
+            length="12"
+            name="AMOUNT, CARDHOLDER BILLING"
+            class="org.jpos.iso.IFB_NUMERIC"/>
+    <isofield
+            id="7"
+            length="10"
+            name="TRANSMISSION DATE AND TIME"
+            class="org.jpos.iso.IFB_NUMERIC"/>
+    <isofield
+            id="8"
+            length="8"
+            name="AMOUNT, CARDHOLDER BILLING FEE"
+            class="org.jpos.iso.IFB_NUMERIC"/>
+    <isofield
+            id="9"
+            length="8"
+            name="CONVERSION RATE, SETTLEMENT"
+            class="org.jpos.iso.IFB_NUMERIC"/>
+    <isofield
+            id="10"
+            length="8"
+            name="CONVERSION RATE, CARDHOLDER BILLING"
+            class="org.jpos.iso.IFB_NUMERIC"/>
+    <isofield
+            id="11"
+            length="6"
+            name="SYSTEM TRACE AUDIT NUMBER"
+            class="org.jpos.iso.IFB_NUMERIC"/>
+    <isofield
+            id="12"
+            length="6"
+            name="TIME, LOCAL TRANSACTION"
+            class="org.jpos.iso.IFB_NUMERIC"/>
+    <isofield
+            id="13"
+            length="4"
+            name="DATE, LOCAL TRANSACTION"
+            class="org.jpos.iso.IFB_NUMERIC"/>
+    <isofield
+            id="14"
+            length="4"
+            name="DATE, EXPIRATION"
+            class="org.jpos.iso.IFB_NUMERIC"/>
+    <isofield
+            id="15"
+            length="4"
+            name="DATE, SETTLEMENT"
+            class="org.jpos.iso.IFB_NUMERIC"/>
+    <isofield
+            id="16"
+            length="4"
+            name="DATE, CONVERSION"
+            class="org.jpos.iso.IFB_NUMERIC"/>
+    <isofield
+            id="17"
+            length="4"
+            name="DATE, CAPTURE"
+            class="org.jpos.iso.IFB_NUMERIC"/>
+    <isofield
+            id="18"
+            length="4"
+            name="MERCHANTS TYPE"
+            class="org.jpos.iso.IFB_NUMERIC"/>
+    <isofield
+            id="19"
+            length="3"
+            name="ACQUIRING INSTITUTION COUNTRY CODE"
+            class="org.jpos.iso.IFB_NUMERIC"/>
+    <isofield
+            id="20"
+            length="3"
+            name="PAN EXTENDED COUNTRY CODE"
+            class="org.jpos.iso.IFB_NUMERIC"/>
+    <isofield
+            id="21"
+            length="3"
+            name="FORWARDING INSTITUTION COUNTRY CODE"
+            class="org.jpos.iso.IFB_NUMERIC"/>
+    <isofield
+            id="22"
+            length="3"
+            name="POINT OF SERVICE ENTRY MODE"
+            class="org.jpos.iso.IFB_NUMERIC"/>
+    <isofield
+            id="23"
+            length="3"
+            name="CARD SEQUENCE NUMBER"
+            class="org.jpos.iso.IFB_NUMERIC"/>
+    <isofield
+            id="24"
+            length="3"
+            name="NETWORK INTERNATIONAL IDENTIFIEER"
+            class="org.jpos.iso.IFB_NUMERIC"/>
+    <isofield
+            id="25"
+            length="2"
+            name="POINT OF SERVICE CONDITION CODE"
+            class="org.jpos.iso.IFB_NUMERIC"/>
+    <isofield
+            id="26"
+            length="2"
+            name="POINT OF SERVICE CAPTURE CODE"
+            class="org.jpos.iso.IFB_NUMERIC"/>
+    <isofield
+            id="27"
+            length="1"
+            name="AUTHORIZATION IDENTIFICATION RESP LEN"
+            class="org.jpos.iso.IFB_NUMERIC"/>
+    <isofield
+            id="28"
+            length="9"
+            name="AMOUNT, TRANSACTION FEE"
+            class="org.jpos.iso.IFB_AMOUNT"/>
+    <isofield
+            id="29"
+            length="9"
+            name="AMOUNT, SETTLEMENT FEE"
+            class="org.jpos.iso.IFB_AMOUNT"/>
+    <isofield
+            id="30"
+            length="9"
+            name="AMOUNT, TRANSACTION PROCESSING FEE"
+            class="org.jpos.iso.IFB_AMOUNT"/>
+    <isofield
+            id="31"
+            length="9"
+            name="AMOUNT, SETTLEMENT PROCESSING FEE"
+            class="org.jpos.iso.IFB_AMOUNT"/>
+    <isofield
+            id="32"
+            length="11"
+            name="ACQUIRING INSTITUTION IDENT CODE"
+            class="org.jpos.iso.IFB_LLNUM"/>
+    <isofield
+            id="33"
+            length="11"
+            name="FORWARDING INSTITUTION IDENT CODE"
+            class="org.jpos.iso.IFB_LLNUM"/>
+    <isofield
+            id="34"
+            length="28"
+            name="EXTENDED PAYMENT CODE"
+            class="org.jpos.iso.IFB_LLCHAR"/>
+    <isofield
+            id="35"
+            length="37"
+            name="TRACK 2 DATA"
+            class="org.jpos.iso.IFB_LLNUM"/>
+    <isofield
+            id="36"
+            length="104"
+            name="TRACK 3 DATA"
+            class="org.jpos.iso.IFB_LLLCHAR"/>
+    <isofield
+            id="37"
+            length="12"
+            name="RETRIEVAL REFERENCE NUMBER"
+            class="org.jpos.iso.IF_CHAR"/>
+    <isofield
+            id="38"
+            length="6"
+            name="AUTHORIZATION IDENTIFICATION RESPONSE"
+            class="org.jpos.iso.IF_CHAR"/>
+    <isofield
+            id="39"
+            length="2"
+            name="RESPONSE CODE"
+            class="org.jpos.iso.IF_CHAR"/>
+    <isofield
+            id="

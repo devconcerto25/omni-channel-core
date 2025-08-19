@@ -15,6 +15,10 @@ java {
 
 repositories {
 	mavenCentral()
+	// Add Maven Central snapshots for jPOS
+	maven {
+		url 'https://oss.sonatype.org/content/repositories/snapshots/'
+	}
 }
 
 dependencies {
@@ -35,6 +39,11 @@ dependencies {
 	implementation 'io.github.resilience4j:resilience4j-timelimiter:1.7.1'
 	implementation 'io.github.resilience4j:resilience4j-core:1.7.1'
 
+	// JPOS for ISO8583 message processing
+	implementation 'org.jpos:jpos:2.1.9'
+
+	// Apache HttpClient 5 for advanced HTTP features
+	implementation 'org.apache.httpcomponents.client5:httpclient5'
 
 	// Swagger/OpenAPI
 	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.3.0'

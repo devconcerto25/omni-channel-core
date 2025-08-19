@@ -6,7 +6,8 @@ import com.concerto.omnichannel.dto.TransactionResponse;
 
 public interface OperationHandler {
     TransactionResponse handle(TransactionRequest request);
-    String getOperationType(); // e.g., "fetchBill", "onboardMerchant"
-    String getChannel();
+    String getOperationType(); // e.g., "purchase", "fetchBill", "onboardMerchant"
+    String getChannel(); // e.g., "ISO8583", "BBPS", "UPI"
+    boolean supports(String channel, String operation);
 }
 

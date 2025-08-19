@@ -1,5 +1,4 @@
-package com.concerto.omnichannel.handlers.bbps;
-
+package com.concerto.omnichannel.handlers.upi;
 
 import com.concerto.omnichannel.connector.Connector;
 import com.concerto.omnichannel.connector.ConnectorFactory;
@@ -15,9 +14,9 @@ import org.springframework.stereotype.Component;
 import java.util.Map;
 
 @Component
-public class BBPSFetchBillHandler implements OperationHandler {
+public class UPIPaymentHandler implements OperationHandler {
 
-    private static final Logger logger = LoggerFactory.getLogger(BBPSFetchBillHandler.class);
+    private static final Logger logger = LoggerFactory.getLogger(UPIPaymentHandler.class);
 
     @Autowired
     private ConnectorFactory connectorFactory;
@@ -27,10 +26,10 @@ public class BBPSFetchBillHandler implements OperationHandler {
 
     @Override
     public TransactionResponse handle(TransactionRequest request) {
-        logger.info("Processing BBPS fetch bill request");
+        logger.info("Processing UPI payment request");
 
         try {
-            // Get the BBPS connector
+            // Get the UPI connector
             Connector connector = connectorFactory.getConnector(request.getChannel());
 
             // Convert request to JSON payload
@@ -52,34 +51,34 @@ public class BBPSFetchBillHandler implements OperationHandler {
             // Check success status
             Boolean success = (Boolean) responseMap.get("success");
             if (success == null) {
-                // Check BBPS specific success indicator
+                // Check UPI specific success indicator
                 success = "SUCCESS".equalsIgnoreCase((String) responseMap.get("status"));
             }
 
             response.setSuccess(success);
 
             if (success) {
-                // Extract bill information
-                response.setExternalReference((String) responseMap.get("billId"));
-                response.addAdditionalData("billAmount", responseMap.get("billAmount"));
-                response.addAdditionalData("dueDate", responseMap.get("dueDate"));
-                response.addAdditionalData("billerName", responseMap.get("billerName"));
+                // Extract UPI transaction details
+                response.setExternalReference((String) responseMap.get("upiTransactionId"));
+                response.addAdditionalData("amount", responseMap.get("amount"));
+                response.addAdditionalData("payer", responseMap.get("payerVpa"));
+                response.addAdditionalData("payee", responseMap.get("payeeVpa"));
             } else {
                 response.setErrorCode((String) responseMap.get("errorCode"));
                 response.setErrorMessage((String) responseMap.get("errorMessage"));
             }
 
-            logger.info("BBPS fetch bill completed with status: {}", success ? "SUCCESS" : "FAILED");
+            logger.info("UPI payment completed with status: {}", success ? "SUCCESS" : "FAILED");
             return response;
 
         } catch (Exception e) {
-            logger.error("Error processing BBPS fetch bill", e);
+            logger.error("Error processing UPI payment", e);
 
             TransactionResponse errorResponse = new TransactionResponse();
             errorResponse.setChannel(request.getChannel());
             errorResponse.setOperation(request.getOperation());
             errorResponse.setSuccess(false);
-            errorResponse.setErrorMessage("Fetch bill processing failed: " + e.getMessage());
+            errorResponse.setErrorMessage("UPI payment processing failed: " + e.getMessage());
             errorResponse.setErrorCode("PROCESSING_ERROR");
 
             return errorResponse;
@@ -88,17 +87,18 @@ public class BBPSFetchBillHandler implements OperationHandler {
 
     @Override
     public String getOperationType() {
-        return "fetchBill";
+        return "payment";
     }
 
     @Override
     public String getChannel() {
-        return "BBPS";
+        return "UPI";
     }
 
     @Override
     public boolean supports(String channel, String operation) {
-        return "BBPS".equalsIgnoreCase(channel) &&
-                "fetchBill".equalsIgnoreCase(operation);
+        return "UPI".equalsIgnoreCase(channel) &&
+                ("payment".equalsIgnoreCase(operation) ||
+                        "transfer".equalsIgnoreCase(operation));
     }
 }

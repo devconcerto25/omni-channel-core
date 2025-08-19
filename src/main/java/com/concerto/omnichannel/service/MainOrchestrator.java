@@ -1,11 +1,14 @@
+// Updated MainOrchestrator using Connector Factory Pattern
 package com.concerto.omnichannel.service;
 
+import com.concerto.omnichannel.connector.Connector;
+import com.concerto.omnichannel.connector.ConnectorFactory;
 import com.concerto.omnichannel.dto.TransactionRequest;
 import com.concerto.omnichannel.dto.TransactionResponse;
 import com.concerto.omnichannel.entity.TransactionHeader;
-import com.concerto.omnichannel.operations.OperationHandler;
-import com.concerto.omnichannel.registry.OperationHandlerRegistry;
 import com.concerto.omnichannel.repository.TransactionHeaderRepository;
+import com.concerto.omnichannel.validation.BusinessRuleValidator;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import io.github.resilience4j.retry.Retry;
@@ -16,14 +19,17 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
 
 @Service
@@ -31,27 +37,29 @@ public class MainOrchestrator {
 
     private static final Logger logger = LoggerFactory.getLogger(MainOrchestrator.class);
 
-    private final AuthenticationService authenticationService;
-    private final OperationHandlerRegistry operationHandlerRegistry;
-    private final TransactionHeaderRepository transactionHeaderRepository;
-    private final CircuitBreakerRegistry circuitBreakerRegistry;
-    private final RetryRegistry retryRegistry;
-    private final TimeLimiterRegistry timeLimiterRegistry;
+    @Autowired
+    private AuthenticationService authenticationService;
 
     @Autowired
-    public MainOrchestrator(AuthenticationService authenticationService,
-                            OperationHandlerRegistry operationHandlerRegistry,
-                            TransactionHeaderRepository transactionHeaderRepository,
-                            CircuitBreakerRegistry circuitBreakerRegistry,
-                            RetryRegistry retryRegistry,
-                            TimeLimiterRegistry timeLimiterRegistry) {
-        this.authenticationService = authenticationService;
-        this.operationHandlerRegistry = operationHandlerRegistry;
-        this.transactionHeaderRepository = transactionHeaderRepository;
-        this.circuitBreakerRegistry = circuitBreakerRegistry;
-        this.retryRegistry = retryRegistry;
-        this.timeLimiterRegistry = timeLimiterRegistry;
-    }
+    private ConnectorFactory connectorFactory;
+
+    @Autowired
+    private TransactionHeaderRepository transactionHeaderRepository;
+
+    @Autowired
+    private BusinessRuleValidator businessRuleValidator;
+
+    @Autowired
+    private CircuitBreakerRegistry circuitBreakerRegistry;
+
+    @Autowired
+    private RetryRegistry retryRegistry;
+
+    @Autowired
+    private TimeLimiterRegistry timeLimiterRegistry;
+
+    @Autowired
+    private ObjectMapper objectMapper;
 
     @Transactional
     public CompletableFuture<TransactionResponse> orchestrateAsync(
@@ -66,7 +74,7 @@ public class MainOrchestrator {
         MDC.put("channel", request.getChannel());
         MDC.put("operation", request.getOperation());
 
-        logger.info("Starting transaction orchestration for channel: {} operation: {}",
+        logger.info("Starting async transaction orchestration for channel: {} operation: {}",
                 request.getChannel(), request.getOperation());
 
         return CompletableFuture.supplyAsync(() -> {
@@ -78,7 +86,7 @@ public class MainOrchestrator {
                 return orchestrateInternal(request, clientId, clientSecret, token, correlationId);
 
             } catch (Exception e) {
-                logger.error("Orchestration failed with error", e);
+                logger.error("Async orchestration failed with error", e);
                 throw new CompletionException(e);
             } finally {
                 MDC.clear();
@@ -104,7 +112,10 @@ public class MainOrchestrator {
         TransactionHeader header = createTransactionHeader(request, correlationId);
 
         try {
-            // 2. Authentication with circuit breaker
+            // 2. Business rule validation
+            businessRuleValidator.validateBusinessRules(request);
+
+            // 3. Authentication with circuit breaker
             boolean authenticated = executeWithResilience(
                     "authentication",
                     () -> authenticationService.authenticate(clientId, clientSecret, token, request.getChannel()),
@@ -123,38 +134,47 @@ public class MainOrchestrator {
             header.setStatus("AUTHENTICATED");
             transactionHeaderRepository.save(header);
 
-            // 3. Get operation handler with caching
-            OperationHandler handler = getOperationHandlerWithCache(request.getChannel(), request.getOperation());
+            // 4. Get appropriate connector using factory pattern
+            Connector connector = connectorFactory.getConnector(request.getChannel());
 
-            if (handler == null) {
-                header.setStatus("HANDLER_NOT_FOUND");
-                header.setErrorMessage("Unsupported channel or operation");
-                header.setResponseTimestamp(LocalDateTime.now());
-                transactionHeaderRepository.save(header);
+            logger.info("Using connector: {} for channel: {}",
+                    connector.getConnectorType(), request.getChannel());
 
-                throw new IllegalArgumentException("Unsupported channel: " + request.getChannel() +
-                        " or operation: " + request.getOperation());
-            }
-
-            // 4. Execute handler with resilience patterns
+            // 5. Update processing status
             header.setStatus("PROCESSING");
             transactionHeaderRepository.save(header);
 
-            TransactionResponse response = executeWithResilience(
+            // 6. Process transaction through connector with resilience patterns
+            String requestPayload = objectMapper.writeValueAsString(request);
+            String responsePayload = executeWithResilience(
                     request.getChannel() + "-" + request.getOperation(),
-                    () -> handler.handle(request),
+                    () -> {
+                        try {
+                            return connector.process(requestPayload);
+                        } catch (Exception e) {
+                            throw new RuntimeException("Connector processing failed", e);
+                        }
+                    },
                     getTimeoutForChannel(request.getChannel())
             );
 
-            // 5. Update final status
-            header.setStatus("SUCCESS");
+            // 7. Parse response and create transaction response
+            TransactionResponse response = parseConnectorResponse(responsePayload, request, header);
+
+            // 8. Update final status
+            header.setStatus(response.isSuccess() ? "SUCCESS" : "FAILED");
+            if (!response.isSuccess()) {
+                header.setErrorMessage(response.getErrorMessage());
+                header.setErrorCode(response.getErrorCode());
+            }
             header.setResponseTimestamp(LocalDateTime.now());
             transactionHeaderRepository.save(header);
 
             response.setCorrelationId(correlationId);
             response.setTransactionId(header.getId());
 
-            logger.info("Transaction orchestration completed successfully");
+            logger.info("Transaction orchestration completed with status: {}",
+                    response.isSuccess() ? "SUCCESS" : "FAILED");
             return response;
 
         } catch (Exception e) {
@@ -167,14 +187,7 @@ public class MainOrchestrator {
             logger.error("Transaction orchestration failed", e);
 
             // Create error response
-            TransactionResponse errorResponse = new TransactionResponse();
-            errorResponse.setCorrelationId(correlationId);
-            errorResponse.setTransactionId(header.getId());
-            errorResponse.setChannel(request.getChannel());
-            errorResponse.setSuccess(false);
-            errorResponse.setErrorMessage(e.getMessage());
-
-            return errorResponse;
+            return createErrorResponse(request, header, correlationId, e);
         }
     }
 
@@ -188,33 +201,139 @@ public class MainOrchestrator {
 
         if (request.getPayload() != null) {
             header.setTransactionType(request.getPayload().getTransactionType());
+            header.setAmount(request.getPayload().getAmount());
+            header.setCurrency(request.getPayload().getCurrency());
+            header.setMerchantId(request.getPayload().getMerchantId());
+            header.setTerminalId(request.getPayload().getTerminalId());
         }
 
         return transactionHeaderRepository.save(header);
     }
 
-    @Cacheable(value = "operationHandlers", key = "#channel + '-' + #operation")
-    private OperationHandler getOperationHandlerWithCache(String channel, String operation) {
-        return operationHandlerRegistry.getHandler(channel, operation);
+    private TransactionResponse parseConnectorResponse(String responsePayload,
+                                                       TransactionRequest request,
+                                                       TransactionHeader header) {
+        try {
+            // Parse the JSON response from connector
+            @SuppressWarnings("unchecked")
+            Map<String, Object> responseMap = objectMapper.readValue(responsePayload, Map.class);
+
+            TransactionResponse response = new TransactionResponse();
+            response.setChannel(request.getChannel());
+            response.setOperation(request.getOperation());
+            response.setTransactionId(header.getId());
+            response.setCorrelationId(header.getCorrelationId());
+
+            // Check success status from connector response
+            Boolean success = (Boolean) responseMap.get("success");
+            if (success == null) {
+                // For backward compatibility, check other success indicators
+                success = checkSuccessIndicators(responseMap);
+            }
+
+            response.setSuccess(success);
+            response.setPayload(responsePayload);
+
+            // Extract common fields
+            if (responseMap.containsKey("authorizationCode")) {
+                response.addAdditionalData("authorizationCode", responseMap.get("authorizationCode"));
+            }
+
+            if (responseMap.containsKey("rrn")) {
+                response.setExternalReference((String) responseMap.get("rrn"));
+            } else if (responseMap.containsKey("transactionId")) {
+                response.setExternalReference((String) responseMap.get("transactionId"));
+            }
+
+            if (!success) {
+                response.setErrorCode((String) responseMap.get("errorCode"));
+                response.setErrorMessage((String) responseMap.get("errorMessage"));
+            }
+
+            return response;
+
+        } catch (Exception e) {
+            logger.error("Failed to parse connector response", e);
+
+            // Create error response if parsing fails
+            TransactionResponse errorResponse = new TransactionResponse();
+            errorResponse.setChannel(request.getChannel());
+            errorResponse.setOperation(request.getOperation());
+            errorResponse.setTransactionId(header.getId());
+            errorResponse.setCorrelationId(header.getCorrelationId());
+            errorResponse.setSuccess(false);
+            errorResponse.setErrorMessage("Failed to parse connector response");
+            errorResponse.setErrorCode("RESPONSE_PARSE_ERROR");
+            errorResponse.setPayload(responsePayload);
+
+            return errorResponse;
+        }
+    }
+
+    private boolean checkSuccessIndicators(Map<String, Object> responseMap) {
+        // Check various success indicators based on connector type
+
+        // ISO8583 responses
+        if (responseMap.containsKey("responseCode")) {
+            return "00".equals(responseMap.get("responseCode"));
+        }
+
+        // UPI responses
+        if (responseMap.containsKey("status")) {
+            String status = (String) responseMap.get("status");
+            return "SUCCESS".equalsIgnoreCase(status) || "APPROVED".equalsIgnoreCase(status);
+        }
+
+        // BBPS responses
+        if (responseMap.containsKey("billStatus")) {
+            return "PAID".equalsIgnoreCase((String) responseMap.get("billStatus"));
+        }
+
+        // Default to false if no success indicator found
+        return false;
+    }
+
+    private TransactionResponse createErrorResponse(TransactionRequest request,
+                                                    TransactionHeader header,
+                                                    String correlationId,
+                                                    Exception e) {
+        TransactionResponse errorResponse = new TransactionResponse();
+        errorResponse.setCorrelationId(correlationId);
+        errorResponse.setTransactionId(header.getId());
+        errorResponse.setChannel(request.getChannel());
+        errorResponse.setOperation(request.getOperation());
+        errorResponse.setSuccess(false);
+        errorResponse.setErrorMessage(e.getMessage());
+
+        // Set appropriate error code based on exception type
+        if (e instanceof SecurityException) {
+            errorResponse.setErrorCode("AUTH_FAILED");
+        } else if (e instanceof IllegalArgumentException) {
+            errorResponse.setErrorCode("INVALID_REQUEST");
+        } else if (e.getMessage() != null && e.getMessage().contains("timeout")) {
+            errorResponse.setErrorCode("TIMEOUT");
+        } else {
+            errorResponse.setErrorCode("PROCESSING_ERROR");
+        }
+
+        return errorResponse;
     }
 
     private <T> T executeWithResilience(String name, Supplier<T> supplier, Duration timeout) {
         CircuitBreaker circuitBreaker = circuitBreakerRegistry.circuitBreaker(name);
         Retry retry = retryRegistry.retry(name);
-        TimeLimiter timeLimiter = timeLimiterRegistry.timeLimiter(name);
 
-        Supplier<CompletableFuture<T>> decoratedSupplier = (Supplier<CompletableFuture<T>>) TimeLimiter
-                .decorateFutureSupplier(timeLimiter, () ->
-                        CompletableFuture.supplyAsync(supplier));
-
-        decoratedSupplier = CircuitBreaker
-                .decorateSupplier(circuitBreaker, decoratedSupplier);
-
-        decoratedSupplier = Retry
-                .decorateSupplier(retry, decoratedSupplier);
+        // Decorate the supplier with CircuitBreaker and Retry
+        Supplier<T> decoratedSupplier = Retry.decorateSupplier(retry,
+                CircuitBreaker.decorateSupplier(circuitBreaker, supplier));
 
         try {
-            return decoratedSupplier.get().join();
+            // Execute with manual timeout using CompletableFuture
+            CompletableFuture<T> future = CompletableFuture.supplyAsync(decoratedSupplier);
+            return future.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (TimeoutException e) {
+            logger.error("Operation timed out for: {}", name);
+            throw new RuntimeException("Operation timed out: " + name, e);
         } catch (Exception e) {
             logger.error("Resilience pattern execution failed for: {}", name, e);
             throw new RuntimeException("Service temporarily unavailable: " + name, e);
@@ -227,9 +346,13 @@ public class MainOrchestrator {
             case "BBPS":
                 return Duration.ofSeconds(3);
             case "ISO8583":
+            case "POS":
+            case "ATM":
                 return Duration.ofSeconds(5);
             case "UPI":
                 return Duration.ofSeconds(6);
+            case "PG":
+                return Duration.ofSeconds(8);
             default:
                 return Duration.ofSeconds(10);
         }

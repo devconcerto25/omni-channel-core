@@ -83,14 +83,18 @@ public class AuthenticationService {
 
     @Cacheable(value = "clientCredentials", key = "#clientId")
     public boolean authenticateWithCredentials(String clientId, String clientSecret, String channelId) {
-        Optional<ClientCredentials> credentialsOpt = credentialsRepository.findByClientIdAndChannelId(clientId, channelId);
+        logger.info("Looking for credentials - ClientId: {}, ChannelId: {}", clientId, channelId);
+
+        // Use the method that checks for active credentials
+        Optional<ClientCredentials> credentialsOpt = credentialsRepository.findByClientIdAndChannelIdAndActiveTrue(clientId, channelId);
 
         if (credentialsOpt.isEmpty()) {
-            logger.warn("Client credentials not found: {}", clientId);
+            logger.warn("Client credentials not found: {} for channel: {}", clientId, channelId);
             return false;
         }
 
         ClientCredentials credentials = credentialsOpt.get();
+        logger.info("Found credentials for client: {}, Active: {}, Expires: {}", clientId, credentials.isActive(), credentials.getExpiryDate());
 
         // Check if credentials are active and not expired
         if (!credentials.isActive() || credentials.getExpiryDate().isBefore(LocalDateTime.now())) {
@@ -98,7 +102,9 @@ public class AuthenticationService {
             return false;
         }
 
-        return passwordEncoder.matches(clientSecret, credentials.getHashedSecret());
+        boolean matches = passwordEncoder.matches(clientSecret, credentials.getHashedSecret());
+        logger.info("Password match result: {}", matches);
+        return matches;
     }
 
     public boolean authenticateWithJwt(String token, String channelId) {

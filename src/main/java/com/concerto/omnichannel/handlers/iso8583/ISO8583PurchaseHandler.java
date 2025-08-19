@@ -1,5 +1,4 @@
-package com.concerto.omnichannel.handlers.bbps;
-
+package com.concerto.omnichannel.operations.handlers;
 
 import com.concerto.omnichannel.connector.Connector;
 import com.concerto.omnichannel.connector.ConnectorFactory;
@@ -15,9 +14,9 @@ import org.springframework.stereotype.Component;
 import java.util.Map;
 
 @Component
-public class BBPSFetchBillHandler implements OperationHandler {
+public class ISO8583PurchaseHandler implements OperationHandler {
 
-    private static final Logger logger = LoggerFactory.getLogger(BBPSFetchBillHandler.class);
+    private static final Logger logger = LoggerFactory.getLogger(ISO8583PurchaseHandler.class);
 
     @Autowired
     private ConnectorFactory connectorFactory;
@@ -27,10 +26,10 @@ public class BBPSFetchBillHandler implements OperationHandler {
 
     @Override
     public TransactionResponse handle(TransactionRequest request) {
-        logger.info("Processing BBPS fetch bill request");
+        logger.info("Processing ISO8583 purchase request");
 
         try {
-            // Get the BBPS connector
+            // Get the appropriate connector
             Connector connector = connectorFactory.getConnector(request.getChannel());
 
             // Convert request to JSON payload
@@ -52,34 +51,34 @@ public class BBPSFetchBillHandler implements OperationHandler {
             // Check success status
             Boolean success = (Boolean) responseMap.get("success");
             if (success == null) {
-                // Check BBPS specific success indicator
-                success = "SUCCESS".equalsIgnoreCase((String) responseMap.get("status"));
+                // Check ISO8583 specific success indicator
+                success = "00".equals(responseMap.get("responseCode"));
             }
 
             response.setSuccess(success);
 
             if (success) {
-                // Extract bill information
-                response.setExternalReference((String) responseMap.get("billId"));
-                response.addAdditionalData("billAmount", responseMap.get("billAmount"));
-                response.addAdditionalData("dueDate", responseMap.get("dueDate"));
-                response.addAdditionalData("billerName", responseMap.get("billerName"));
+                // Extract success data
+                response.setExternalReference((String) responseMap.get("rrn"));
+                response.addAdditionalData("authorizationCode", responseMap.get("authorizationCode"));
+                response.addAdditionalData("stan", responseMap.get("stan"));
             } else {
+                // Extract error information
                 response.setErrorCode((String) responseMap.get("errorCode"));
                 response.setErrorMessage((String) responseMap.get("errorMessage"));
             }
 
-            logger.info("BBPS fetch bill completed with status: {}", success ? "SUCCESS" : "FAILED");
+            logger.info("ISO8583 purchase completed with status: {}", success ? "SUCCESS" : "FAILED");
             return response;
 
         } catch (Exception e) {
-            logger.error("Error processing BBPS fetch bill", e);
+            logger.error("Error processing ISO8583 purchase", e);
 
             TransactionResponse errorResponse = new TransactionResponse();
             errorResponse.setChannel(request.getChannel());
             errorResponse.setOperation(request.getOperation());
             errorResponse.setSuccess(false);
-            errorResponse.setErrorMessage("Fetch bill processing failed: " + e.getMessage());
+            errorResponse.setErrorMessage("Purchase processing failed: " + e.getMessage());
             errorResponse.setErrorCode("PROCESSING_ERROR");
 
             return errorResponse;
@@ -88,17 +87,19 @@ public class BBPSFetchBillHandler implements OperationHandler {
 
     @Override
     public String getOperationType() {
-        return "fetchBill";
+        return "purchase";
     }
 
     @Override
     public String getChannel() {
-        return "BBPS";
+        return "ISO8583";
     }
 
     @Override
     public boolean supports(String channel, String operation) {
-        return "BBPS".equalsIgnoreCase(channel) &&
-                "fetchBill".equalsIgnoreCase(operation);
+        return ("ISO8583".equalsIgnoreCase(channel) ||
+                "POS".equalsIgnoreCase(channel) ||
+                "ATM".equalsIgnoreCase(channel)) &&
+                "purchase".equalsIgnoreCase(operation);
     }
 }
