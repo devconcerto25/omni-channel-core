@@ -171,6 +171,11 @@ iso8583:
       config: iso87ascii.xml
     binary:
       config: iso87binary.xml
+  tpdu:
+    enabled: true
+    identifier: "0x60"
+    source: "0x0526"     # Source address
+    destination: "0x00F1" # Destination address
 
 # External Switch Configuration
 switch:

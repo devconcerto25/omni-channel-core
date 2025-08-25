@@ -84,6 +84,7 @@ public class ISO8583Connector implements Connector {
             logger.debug("Processing {} operation for channel {}", operation, channel);
 
             // Convert JSON to ISO8583 message
+
             ISOMsg requestMsg = messageParser.jsonToISO8583FromJson(payload);
 
             // Send to external switch

@@ -6,14 +6,18 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jpos.iso.ISOException;
 import org.jpos.iso.ISOMsg;
+import org.jpos.iso.ISOPackager;
 import org.jpos.iso.packager.GenericPackager;
+import org.jpos.iso.packager.ISO87BPackager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 import jakarta.annotation.PostConstruct;
+
 import java.io.InputStream;
 import java.math.BigDecimal;
 import java.text.SimpleDateFormat;
@@ -36,8 +40,25 @@ public class ISO8583MessageParser {
     @Value("${iso8583.packager.binary.config:iso87binary.xml}")
     private String binaryPackagerConfig;
 
-    @Value("${iso8583.packager.type:ascii}")
+    //@Value("${iso8583.packager.type:ascii}")
+    @Value("${iso8583.packager.type:iso87b}")
     private String defaultPackagerType;
+
+
+    @Value("${iso8583.tpdu.enabled:true}")
+    private boolean tpduEnabled;
+
+    @Value("${iso8583.tpdu.identifier:0x60}")
+    private String tpduIdentifier;
+
+    @Value("${iso8583.tpdu.source:0x0526}")
+    private String tpduSource;
+
+    @Value("${iso8583.tpdu.destination:0x00F1}")
+    private String tpduDestination;
+
+    @Autowired
+    private ConfigurationService configurationService;
 
     @PostConstruct
     public void initialize() {
@@ -134,13 +155,14 @@ public class ISO8583MessageParser {
     /**
      * Convert TransactionRequest to ISO8583 message (backward compatibility)
      */
-    public ISOMsg jsonToISO8583(TransactionRequest request) throws ISOException {
+    /*public ISOMsg jsonToISO8583(TransactionRequest request) throws ISOException {
         return jsonToISO8583(request, defaultPackagerType);
-    }
+    }*/
 
     /**
      * Convert TransactionRequest to ISO8583 message with specific packager type
      */
+/*
     public ISOMsg jsonToISO8583(TransactionRequest request, String packagerType) throws ISOException {
         logger.debug("Converting TransactionRequest to ISO8583 using {} packager", packagerType);
 
@@ -159,6 +181,7 @@ public class ISO8583MessageParser {
         logger.debug("ISO8583 message created with MTI: {} using {} packager", mti, packagerType);
         return isoMsg;
     }
+*/
 
     /**
      * Convert ISO8583 response message to JSON
@@ -184,6 +207,9 @@ public class ISO8583MessageParser {
      * Pack ISO8583 message to byte array for transmission
      */
     public byte[] packMessage(ISOMsg isoMsg) throws ISOException {
+        ISOPackager binaryPackager = new ISO87BPackager();
+        isoMsg.setPackager(binaryPackager);
+        printISOMessage(isoMsg);
         return isoMsg.pack();
     }
 
@@ -195,8 +221,34 @@ public class ISO8583MessageParser {
         ISOMsg isoMsg = new ISOMsg();
         isoMsg.setPackager(packager);
         isoMsg.unpack(messageBytes);
+        printISOMessage(isoMsg);
         return isoMsg;
     }
+
+    public ISOMsg unpackMessageWithBinaryPackager(byte[] messageBytes) throws Exception {
+        ISOPackager binaryPackager = new ISO87BPackager();
+
+        ISOMsg msg = new ISOMsg();
+        msg.setPackager(binaryPackager);
+        msg.unpack(messageBytes);
+
+        return msg;
+    }
+
+    private void printISOMessage(ISOMsg isoMsg) {
+        try {
+            System.out.println("MTI = " + isoMsg.getMTI());
+            for (int i = 1; i <= isoMsg.getMaxField(); i++) {
+                if (isoMsg.hasField(i)) {
+                    System.out.println("Field (" + i + ") = " + isoMsg.getString(i));
+                }
+            }
+            System.out.println("Message: " + isoMsg);
+        } catch (ISOException e) {
+            e.printStackTrace();
+        }
+    }
+
 
     /**
      * Unpack byte array to ISO8583 message using default packager
@@ -204,6 +256,7 @@ public class ISO8583MessageParser {
     public ISOMsg unpackMessage(byte[] messageBytes) throws ISOException {
         return unpackMessage(messageBytes, defaultPackagerType);
     }
+
 
     /**
      * Auto-detect packager type from message bytes
@@ -295,7 +348,7 @@ public class ISO8583MessageParser {
         }
 
         // Field 7: Transmission Date and Time
-        isoMsg.set(7, getCurrentTimestamp());
+        //isoMsg.set(7, getCurrentTimestamp());
 
         // Field 11: System Trace Audit Number (STAN)
         isoMsg.set(11, generateSTAN());
@@ -307,27 +360,27 @@ public class ISO8583MessageParser {
         isoMsg.set(13, getCurrentDate());
 
         // Field 15: Date, Settlement
-        isoMsg.set(15, getCurrentDate());
+        //isoMsg.set(15, getCurrentDate());
 
         // Field 18: Merchant Category Code
-        if (payload.has("merchantCategoryCode")) {
+        /*if (payload.has("merchantCategoryCode")) {
             isoMsg.set(18, payload.get("merchantCategoryCode").asText());
         } else {
             isoMsg.set(18, "5999"); // Default MCC
-        }
+        }*/
 
         // Field 22: Point of Service Entry Mode
         String channel = jsonNode.get("channel").asText();
-        isoMsg.set(22, getPOSEntryMode(channel));
+        isoMsg.set(22, getPOSEntryMode(channel, jsonNode));
 
         // Field 25: Point of Service Condition Code
         isoMsg.set(25, "00");
 
         // Field 32: Acquiring Institution ID Code
-        if (payload.has("merchantId")) {
+        /*if (payload.has("merchantId")) {
             String merchantId = payload.get("merchantId").asText();
             isoMsg.set(32, merchantId.substring(0, Math.min(11, merchantId.length())));
-        }
+        }*/
 
         // Field 37: Retrieval Reference Number
         isoMsg.set(37, generateRRN());
@@ -343,18 +396,20 @@ public class ISO8583MessageParser {
         }
 
         // Field 49: Currency Code, Transaction
-        if (payload.has("currency")) {
+        /*if (payload.has("currency")) {
             isoMsg.set(49, getCurrencyCode(payload.get("currency").asText()));
-        }
+        }*/
+
+
 
         // Handle additional fields from payload
         if (payload.has("additionalFields")) {
-            mapAdditionalFieldsFromJson(isoMsg, payload.get("additionalFields"));
+            mapAdditionalFieldsFromJson(isoMsg, payload);
         }
     }
 
-    private void mapAdditionalFieldsFromJson(ISOMsg isoMsg, JsonNode additionalFields) throws Exception {
-        additionalFields.fields().forEachRemaining(entry -> {
+    private void mapAdditionalFieldsFromJson(ISOMsg isoMsg, JsonNode payload) throws Exception {
+        payload.get("additionalFields").fields().forEachRemaining(entry -> {
             String key = entry.getKey();
             String value = entry.getValue().asText();
 
@@ -366,12 +421,14 @@ public class ISO8583MessageParser {
                     case "track1":
                         isoMsg.set(45, value);
                         break;
-                    case "acquiringinstitutioncode":
+                    /*case "acquiringinstitutioncode":
                         isoMsg.set(32, value);
                         break;
                     case "merchantcategorycode":
                         isoMsg.set(18, value);
-                        break;
+                        break;*/
+                    case "emvData":
+                        isoMsg.set(55, value);
                     // Add more field mappings as needed
                 }
             } catch (Exception e) {
@@ -400,6 +457,7 @@ public class ISO8583MessageParser {
         }
     }
 
+/*
     private void mapJsonFieldsToISO(ISOMsg isoMsg, TransactionRequest request) throws ISOException {
         // Field 2: Primary Account Number (PAN)
         if (request.getPayload().getCardNumber() != null) {
@@ -434,7 +492,9 @@ public class ISO8583MessageParser {
         isoMsg.set(18, "5999"); // Default MCC
 
         // Field 22: Point of Service Entry Mode
-        isoMsg.set(22, getPOSEntryMode(request.getChannel()));
+        String channel = request.getChannel();
+        String enrtyMode = request.getPayload()
+        isoMsg.set(22, getPOSEntryMode(channel, ));
 
         // Field 25: Point of Service Condition Code
         isoMsg.set(25, "00");
@@ -465,6 +525,7 @@ public class ISO8583MessageParser {
         // Add additional fields from metadata
         mapAdditionalFields(isoMsg, request);
     }
+*/
 
     private void mapISOFieldsToJson(ISOMsg isoMsg, Map<String, Object> jsonResponse) throws ISOException {
         // Map important response fields
@@ -510,7 +571,7 @@ public class ISO8583MessageParser {
         switch (operation.toLowerCase()) {
             case "purchase":
             case "sale":
-                return "000000"; // Purchase
+                return "001000"; // Purchase
             case "withdrawal":
                 return "010000"; // Cash Withdrawal
             case "balance":
@@ -557,17 +618,81 @@ public class ISO8583MessageParser {
         return String.format("%012d", System.currentTimeMillis() % 1000000000000L);
     }
 
-    private String getPOSEntryMode(String channel) {
+    /*private String getPOSEntryMode(String channel) {
+        return switch (channel.toUpperCase()) {
+            case "POS" -> "051"; // Chip Card
+            case "ATM" -> "021"; // Magnetic Stripe
+            case "UPI" -> "071"; // Contactless
+            default -> "012"; // Track 2 data
+        };
+    }*/
+
+    private String getPOSEntryMode(String channel, JsonNode payload) {
         switch (channel.toUpperCase()) {
-            case "POS":
-                return "051"; // Chip Card
             case "ATM":
-                return "021"; // Magnetic Stripe
+                return "051"; // ATM always uses chip card entry
+
+            case "POS":
+                return determinePOSEntryMode(payload);
+
             case "UPI":
-                return "071"; // Contactless
+                return "071"; // Contactless for UPI
+
             default:
-                return "012"; // Track 2 data
+                return "012"; // Track 2 data fallback
         }
+    }
+
+    private String determinePOSEntryMode(JsonNode payload) {
+        // Check if entry mode is explicitly specified in additional fields
+        if (payload.has("additionalFields")) {
+            JsonNode additionalFields = payload.get("additionalFields");
+
+            if (additionalFields.has("entryMode")) {
+                String entryMode = additionalFields.get("entryMode").asText().toUpperCase();
+                return mapEntryModeToCode(entryMode);
+            }
+
+            if (additionalFields.has("posEntryMode")) {
+                return additionalFields.get("posEntryMode").asText();
+            }
+        }
+
+        // Determine based on available card data
+        boolean hasTrack2 = payload.has("additionalFields") &&
+                payload.get("additionalFields").has("track2");
+        boolean hasChipData = payload.has("additionalFields") &&
+                payload.get("additionalFields").has("chipData");
+        boolean hasContactless = payload.has("additionalFields") &&
+                payload.get("additionalFields").has("contactless");
+
+        if (hasContactless) {
+            // Check if PIN was entered for contactless
+            boolean pinEntered = payload.has("additionalFields") &&
+                    payload.get("additionalFields").has("pinEntered") &&
+                    payload.get("additionalFields").get("pinEntered").asBoolean();
+
+            return pinEntered ? "072" : "071"; // Contactless with/without PIN
+        } else if (hasChipData) {
+            return "051"; // Chip card
+        } else if (hasTrack2) {
+            return "021"; // Magnetic stripe
+        }
+
+        // Default to chip card for POS
+        return "051";
+    }
+
+    private String mapEntryModeToCode(String entryMode) {
+        return switch (entryMode) {
+            case "CHIP", "EMV", "ICC" -> "051";
+            case "MAGNETIC_STRIPE", "MAG_STRIPE", "SWIPE" -> "021";
+            case "CONTACTLESS", "NFC", "TAP" -> "071";
+            case "CONTACTLESS_PIN", "NFC_PIN", "TAP_PIN" -> "072";
+            case "MANUAL", "KEYED" -> "012";
+            case "HYBRID" -> "052"; // Chip with magnetic stripe fallback
+            default -> "051"; // Default to chip
+        };
     }
 
     private String getCurrencyCode(String currency) {
@@ -723,4 +848,120 @@ public class ISO8583MessageParser {
             }
         }
     }
+
+    /* Get TPDU header bytes*/
+    private byte[] getTpduHeader() {
+        return new byte[]{
+                (byte) 0x60, // Identifier
+                (byte) 0x05, // Source (first byte)
+                (byte) 0x26, // Source (second byte)
+                (byte) 0x00, // Destination (first byte)
+                (byte) 0xF1  // Destination (second byte)
+        };
+    }
+
+    /**
+     * Get configurable TPDU header from configuration
+     */
+    private byte[] getConfigurableTpduHeader(String channelId) {
+        try {
+            // Get channel-specific TPDU configuration
+            String identifier = configurationService.getConfigValue(channelId, "tpduIdentifier", tpduIdentifier);
+            String source = configurationService.getConfigValue(channelId, "tpduSource", tpduSource);
+            String destination = configurationService.getConfigValue(channelId, "tpduDestination", tpduDestination);
+
+            return new byte[]{
+                    (byte) Integer.parseInt(identifier.replace("0x", ""), 16),
+                    (byte) ((Integer.parseInt(source.replace("0x", ""), 16) >> 8) & 0xFF),
+                    (byte) (Integer.parseInt(source.replace("0x", ""), 16) & 0xFF),
+                    (byte) ((Integer.parseInt(destination.replace("0x", ""), 16) >> 8) & 0xFF),
+                    (byte) (Integer.parseInt(destination.replace("0x", ""), 16) & 0xFF)
+            };
+        } catch (Exception e) {
+            logger.warn("Failed to parse TPDU configuration, using defaults", e);
+            return getTpduHeader();
+        }
+    }
+
+    public byte[] packMessageWithTpdu(ISOMsg isoMsg, String channelId) throws ISOException {
+        byte[] isoBytes = isoMsg.pack();
+
+        if (!tpduEnabled) {
+            return isoBytes;
+        }
+
+        byte[] tpduHeader = getConfigurableTpduHeader(channelId);
+        byte[] messageWithTpdu = new byte[tpduHeader.length + isoBytes.length];
+
+        // Copy TPDU header
+        System.arraycopy(tpduHeader, 0, messageWithTpdu, 0, tpduHeader.length);
+
+        // Copy ISO message
+        System.arraycopy(isoBytes, 0, messageWithTpdu, tpduHeader.length, isoBytes.length);
+
+        logger.debug("ISO8583 message packed with TPDU header, total length: {} bytes", messageWithTpdu.length);
+        return messageWithTpdu;
+    }
+
+    /**
+     * Unpack ISO8583 message by removing TPDU header
+     */
+    public ISOMsg unpackMessageWithTpdu(byte[] messageBytes, String packagerType, String channelId) throws ISOException {
+        if (!tpduEnabled || messageBytes.length < 5) {
+            return unpackMessage(messageBytes, packagerType);
+        }
+
+        // Skip TPDU header (first 5 bytes)
+        byte[] isoBytes = new byte[messageBytes.length - 5];
+        System.arraycopy(messageBytes, 5, isoBytes, 0, isoBytes.length);
+
+        logger.debug("Removed TPDU header, ISO message length: {} bytes", isoBytes.length);
+        return unpackMessage(isoBytes, packagerType);
+    }
+
+    /**
+     * Extract TPDU header information for logging/debugging
+     */
+    public TpduInfo extractTpduInfo(byte[] messageBytes) {
+        if (messageBytes.length < 5) {
+            return null;
+        }
+
+        return new TpduInfo(
+                messageBytes[0] & 0xFF,  // Identifier
+                ((messageBytes[1] & 0xFF) << 8) | (messageBytes[2] & 0xFF), // Source
+                ((messageBytes[3] & 0xFF) << 8) | (messageBytes[4] & 0xFF)  // Destination
+        );
+    }
+
+
+    public static class TpduInfo {
+        private final int identifier;
+        private final int source;
+        private final int destination;
+
+        public TpduInfo(int identifier, int source, int destination) {
+            this.identifier = identifier;
+            this.source = source;
+            this.destination = destination;
+        }
+
+        public int getIdentifier() {
+            return identifier;
+        }
+
+        public int getSource() {
+            return source;
+        }
+
+        public int getDestination() {
+            return destination;
+        }
+
+        @Override
+        public String toString() {
+            return String.format("TPDU[ID:0x%02X, SRC:0x%04X, DST:0x%04X]", identifier, source, destination);
+        }
+    }
 }
+
