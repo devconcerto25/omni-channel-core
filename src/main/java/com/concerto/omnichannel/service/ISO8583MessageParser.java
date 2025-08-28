@@ -288,15 +288,10 @@ public class ISO8583MessageParser {
 
     // Private helper methods
     private GenericPackager getPackager(String packagerType) {
-        switch (packagerType.toLowerCase()) {
-            case "binary":
-            case "iso87b":
-                return binaryPackager != null ? binaryPackager : asciiPackager;
-            case "ascii":
-            case "iso87a":
-            default:
-                return asciiPackager;
-        }
+        return switch (packagerType.toLowerCase()) {
+            case "binary", "iso87b" -> binaryPackager != null ? binaryPackager : asciiPackager;
+            default -> asciiPackager;
+        };
     }
 
     private String getPackagerType(JsonNode jsonNode) {
@@ -427,7 +422,7 @@ public class ISO8583MessageParser {
                     case "merchantcategorycode":
                         isoMsg.set(18, value);
                         break;*/
-                    case "emvData":
+                    case "emvdata":
                         isoMsg.set(55, value);
                     // Add more field mappings as needed
                 }
@@ -439,22 +434,14 @@ public class ISO8583MessageParser {
 
     // ... (Keep all the existing helper methods from previous implementation)
     private String getMTIForOperation(String operation) {
-        switch (operation.toLowerCase()) {
-            case "purchase":
-            case "sale":
-                return "0200"; // Authorization Request
-            case "refund":
-                return "0220"; // Advice Request
-            case "balance":
-            case "balance_inquiry":
-                return "0100"; // Authorization Request (Balance Inquiry)
-            case "withdrawal":
-                return "0200"; // Authorization Request (Cash Withdrawal)
-            case "reversal":
-                return "0400"; // Reversal Request
-            default:
-                return "0200"; // Default to Authorization Request
-        }
+        return switch (operation.toLowerCase()) {
+            case "purchase", "sale" -> "0200"; // Authorization Request
+            case "refund" -> "0220"; // Advice Request
+            case "balance", "balance_inquiry" -> "0100"; // Authorization Request (Balance Inquiry)
+            case "withdrawal" -> "0200"; // Authorization Request (Cash Withdrawal)
+            case "reversal" -> "0400"; // Reversal Request
+            default -> "0200"; // Default to Authorization Request
+        };
     }
 
 /*
@@ -568,20 +555,13 @@ public class ISO8583MessageParser {
     }
 
     private String getProcessingCode(String operation) {
-        switch (operation.toLowerCase()) {
-            case "purchase":
-            case "sale":
-                return "001000"; // Purchase
-            case "withdrawal":
-                return "010000"; // Cash Withdrawal
-            case "balance":
-            case "balance_inquiry":
-                return "310000"; // Balance Inquiry
-            case "refund":
-                return "200000"; // Refund
-            default:
-                return "000000";
-        }
+        return switch (operation.toLowerCase()) {
+            case "purchase", "sale" -> "001000"; // Purchase
+            case "withdrawal" -> "010000"; // Cash Withdrawal
+            case "balance", "balance_inquiry" -> "310000"; // Balance Inquiry
+            case "refund" -> "200000"; // Refund
+            default -> "000000";
+        };
     }
 
     private String formatAmount(BigDecimal amount) {
@@ -628,19 +608,14 @@ public class ISO8583MessageParser {
     }*/
 
     private String getPOSEntryMode(String channel, JsonNode payload) {
-        switch (channel.toUpperCase()) {
-            case "ATM":
-                return "051"; // ATM always uses chip card entry
+        return switch (channel.toUpperCase()) {
+            case "ATM" -> "051"; // ATM always uses chip card entry
 
-            case "POS":
-                return determinePOSEntryMode(payload);
+            case "POS" -> determinePOSEntryMode(payload);
+            case "UPI" -> "071"; // Contactless for UPI
 
-            case "UPI":
-                return "071"; // Contactless for UPI
-
-            default:
-                return "012"; // Track 2 data fallback
-        }
+            default -> "012"; // Track 2 data fallback
+        };
     }
 
     private String determinePOSEntryMode(JsonNode payload) {
@@ -697,18 +672,13 @@ public class ISO8583MessageParser {
 
     private String getCurrencyCode(String currency) {
         // ISO 4217 numeric currency codes
-        switch (currency.toUpperCase()) {
-            case "USD":
-                return "840";
-            case "EUR":
-                return "978";
-            case "INR":
-                return "356";
-            case "GBP":
-                return "826";
-            default:
-                return "356"; // Default to INR
-        }
+        return switch (currency.toUpperCase()) {
+            case "USD" -> "840";
+            case "EUR" -> "978";
+            case "INR" -> "356";
+            case "GBP" -> "826";
+            default -> "356"; // Default to INR
+        };
     }
 
     private String maskCardNumber(String cardNumber) {
@@ -747,72 +717,40 @@ public class ISO8583MessageParser {
     private String getResponseDescription(String responseCode) {
         if (responseCode == null) return "Unknown";
 
-        switch (responseCode) {
-            case "00":
-                return "Approved";
-            case "01":
-                return "Refer to card issuer";
-            case "02":
-                return "Refer to card issuer, special condition";
-            case "03":
-                return "Invalid merchant";
-            case "04":
-                return "Pick up card";
-            case "05":
-                return "Do not honor";
-            case "06":
-                return "Error";
-            case "07":
-                return "Pick up card, special condition";
-            case "08":
-                return "Honor with identification";
-            case "09":
-                return "Request in progress";
-            case "10":
-                return "Approved for partial amount";
-            case "11":
-                return "Approved (VIP)";
-            case "12":
-                return "Invalid transaction";
-            case "13":
-                return "Invalid amount";
-            case "14":
-                return "Invalid card number";
-            case "15":
-                return "No such issuer";
-            case "51":
-                return "Insufficient funds";
-            case "54":
-                return "Expired card";
-            case "55":
-                return "Incorrect PIN";
-            case "57":
-                return "Transaction not permitted to cardholder";
-            case "58":
-                return "Transaction not permitted to terminal";
-            case "61":
-                return "Exceeds withdrawal amount limit";
-            case "62":
-                return "Restricted card";
-            case "63":
-                return "Security violation";
-            case "65":
-                return "Exceeds withdrawal frequency limit";
-            case "68":
-                return "Response received too late";
-            case "75":
-                return "Allowable number of PIN tries exceeded";
-            case "91":
-                return "Issuer or switch is inoperative";
-            case "92":
-                return "Financial institution or intermediate network facility cannot be found";
-            case "94":
-                return "Duplicate transmission";
-            case "96":
-                return "System malfunction";
-            default:
-                return "Unknown response code: " + responseCode;
-        }
+        return switch (responseCode) {
+            case "00" -> "Approved";
+            case "01" -> "Refer to card issuer";
+            case "02" -> "Refer to card issuer, special condition";
+            case "03" -> "Invalid merchant";
+            case "04" -> "Pick up card";
+            case "05" -> "Do not honor";
+            case "06" -> "Error";
+            case "07" -> "Pick up card, special condition";
+            case "08" -> "Honor with identification";
+            case "09" -> "Request in progress";
+            case "10" -> "Approved for partial amount";
+            case "11" -> "Approved (VIP)";
+            case "12" -> "Invalid transaction";
+            case "13" -> "Invalid amount";
+            case "14" -> "Invalid card number";
+            case "15" -> "No such issuer";
+            case "51" -> "Insufficient funds";
+            case "54" -> "Expired card";
+            case "55" -> "Incorrect PIN";
+            case "57" -> "Transaction not permitted to cardholder";
+            case "58" -> "Transaction not permitted to terminal";
+            case "61" -> "Exceeds withdrawal amount limit";
+            case "62" -> "Restricted card";
+            case "63" -> "Security violation";
+            case "65" -> "Exceeds withdrawal frequency limit";
+            case "68" -> "Response received too late";
+            case "75" -> "Allowable number of PIN tries exceeded";
+            case "91" -> "Issuer or switch is inoperative";
+            case "92" -> "Financial institution or intermediate network facility cannot be found";
+            case "94" -> "Duplicate transmission";
+            case "96" -> "System malfunction";
+            default -> "Unknown response code: " + responseCode;
+        };
     }
 
     private GenericPackager createDefaultAsciiPackager() {
