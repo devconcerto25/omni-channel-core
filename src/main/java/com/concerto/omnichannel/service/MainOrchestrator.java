@@ -342,19 +342,13 @@ public class MainOrchestrator {
 
     private Duration getTimeoutForChannel(String channel) {
         // This could be moved to configuration service
-        switch (channel.toUpperCase()) {
-            case "BBPS":
-                return Duration.ofSeconds(3);
-            case "ISO8583":
-            case "POS":
-            case "ATM":
-                return Duration.ofSeconds(5);
-            case "UPI":
-                return Duration.ofSeconds(6);
-            case "PG":
-                return Duration.ofSeconds(8);
-            default:
-                return Duration.ofSeconds(10);
-        }
+        return switch (channel.toUpperCase()) {
+            case "BBPS" -> Duration.ofSeconds(3);
+            case "ISO8583", "POS", "ATM" -> Duration.ofSeconds(5);
+            case "UPI" -> Duration.ofSeconds(6);
+            case "PG" -> Duration.ofSeconds(8);
+            default -> Duration.ofSeconds(10);
+        };
     }
+
 }

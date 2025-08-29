@@ -279,4 +279,12 @@ public class TransactionService {
 
         return response;
     }
+
+    public TransactionHeader findByCorrelationId(String correlationId) {
+        Optional<TransactionHeader> headerOpt = headerRepository.findByCorrelationId(correlationId);
+        if (headerOpt.isEmpty()) {
+            throw new RuntimeException("Transaction not found with correlation ID: " + correlationId);
+        }
+        return headerOpt.get();
+    }
 }

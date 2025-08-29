@@ -50,6 +50,13 @@ public class ApiResponse<T> {
         return new ApiResponse<>(true, data, message);
     }
 
+    // Add this method to your ApiResponse class
+    public static <T> ApiResponse<T> success(T data, String message, String correlationId) {
+        ApiResponse<T> response = new ApiResponse<>(true, data, message);
+        response.setCorrelationId(correlationId);
+        return response;
+    }
+
     public static <T> ApiResponse<T> error(String message) {
         ApiResponse<T> response = new ApiResponse<>();
         response.success = false;
