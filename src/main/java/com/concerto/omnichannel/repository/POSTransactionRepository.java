@@ -30,7 +30,7 @@ public interface POSTransactionRepository extends JpaRepository<POSTransactionDe
     );
 
     @Query("SELECT p FROM POSTransactionDetails p JOIN p.transactionHeader th " +
-            "WHERE th.success = true AND p.createdDate >= :startDate")
+            "WHERE th.status = 'SUCCESS' AND p.createdDate >= :startDate")
     List<POSTransactionDetails> findSuccessfulTransactionsSince(@Param("startDate") LocalDateTime startDate);
 }
 

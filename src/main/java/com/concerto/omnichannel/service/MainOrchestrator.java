@@ -61,6 +61,9 @@ public class MainOrchestrator {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private ChannelSpecificTransactionService channelSpecificTransactionService;
+
     @Transactional
     public CompletableFuture<TransactionResponse> orchestrateAsync(
             TransactionRequest request,
@@ -160,7 +163,8 @@ public class MainOrchestrator {
 
             // 7. Parse response and create transaction response
             TransactionResponse response = parseConnectorResponse(responsePayload, request, header);
-
+            channelSpecificTransactionService.saveChannelSpecificDetails(
+                    header, request, response);
             // 8. Update final status
             header.setStatus(response.isSuccess() ? "SUCCESS" : "FAILED");
             if (!response.isSuccess()) {

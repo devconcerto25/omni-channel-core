@@ -9,6 +9,8 @@ spring:
       connection-timeout: 60000
       idle-timeout: 300000
       max-lifetime: 1200000
+      validation-timeout: 5000
+      keepalive-time: 30000
       leak-detection-threshold: 60000
 
   redis:
@@ -24,7 +26,7 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: none
     show-sql: false
     properties:
       hibernate:
