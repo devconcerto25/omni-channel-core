@@ -17,7 +17,9 @@ public interface ClientCredentialsRepository extends JpaRepository<ClientCredent
 
     Optional<ClientCredentials> findByClientIdAndChannelIdAndActiveTrue(String clientId, String channelId);
 
-    List<ClientCredentials> findByClientId(String clientId);
+    Optional<ClientCredentials> findByClientId(String clientID);
+
+    //List<ClientCredentials> findByClientId(String clientId);
 
     List<ClientCredentials> findByChannelId(String channelId);
 

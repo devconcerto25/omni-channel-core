@@ -1,6 +1,7 @@
 package com.concerto.omnichannel.service;
 
 import com.concerto.omnichannel.entity.ClientCredentials;
+import com.concerto.omnichannel.entity.MerchantInfo;
 import com.concerto.omnichannel.repository.ClientCredentialsRepository;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
@@ -8,6 +9,7 @@ import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -16,7 +18,6 @@ import org.springframework.stereotype.Service;
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.util.Date;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -35,6 +36,9 @@ public class AuthenticationService {
 
     // In-memory tracking for failed attempts (in production, use Redis)
     private final ConcurrentHashMap<String, FailedAttempt> failedAttempts = new ConcurrentHashMap<>();
+
+    @Autowired
+    private MerchantService merchantService;
 
     public AuthenticationService(
             ClientCredentialsRepository credentialsRepository,
@@ -63,13 +67,39 @@ public class AuthenticationService {
             }
 
             if (authenticated) {
+                // 2. Get merchant ID from client credentials
+                String merchantId = getMerchantIdFromClient(clientId, channelId);
+                if (merchantId == null) {
+                    logger.warn("No merchant associated with channel {}", channelId);
+                    return false;
+                }
+                logger.debug("Merchant ID {} found for clientId {} and channelId {}", merchantId, clientId, channelId);
+
+                // 3. Validate merchant exists and is active
+                Optional<MerchantInfo> merchantInfo = merchantService.getMerchantInfo(merchantId);
+                if (merchantInfo.isEmpty()) {
+                    logger.warn("Merchant info not found {}", merchantId);
+                    return false;
+                }
+
+                if (!merchantInfo.get().getActive()) {
+                    logger.warn("Merchant is inactive {}", merchantId);
+                    return false;
+                }
+
+                // 4. Validate merchant has credentials for the channel
+                if (!merchantService.getMerchantCredentials(merchantId, channelId).isPresent()) {
+                    logger.warn("Merchant not configured for channel:  {}", channelId);
+                    return false;
+                }
+
                 // Clear failed attempts on successful authentication
                 failedAttempts.remove(clientId);
-                logger.info("Authentication successful for client: {}", clientId);
+                logger.info("Authentication successful for client: {} {} {}", clientId, merchantId, channelId);
             } else {
                 // Track failed attempt
                 trackFailedAttempt(clientId);
-                logger.warn("Authentication failed for client: {}", clientId);
+                logger.warn("Authentication failed for client: {} {}", clientId,channelId);
             }
 
             return authenticated;
@@ -81,13 +111,33 @@ public class AuthenticationService {
         }
     }
 
+    private String getMerchantIdFromClient(String clientId, String channelId) {
+        try {
+            // Query client_credentials table to get merchant_id
+            // This assumes you've added merchant_id column to client_credentials table
+
+            // Example implementation:
+            logger.debug("Getting merchant ID for client: {}", clientId);
+            Optional<ClientCredentials> clientCreds = credentialsRepository.findByClientIdAndChannelId(clientId, channelId);
+            return clientCreds.map(ClientCredentials::getMerchantId).orElse(null);
+
+            // For now, returning a placeholder
+
+            //return "MERCH001"; // Replace with actual implementation
+
+        } catch (Exception e) {
+            logger.error("Error getting merchant ID for client: {}", clientId, e);
+            return null;
+        }
+    }
+
     @Cacheable(value = "clientCredentials", key = "#clientId")
     public boolean authenticateWithCredentials(String clientId, String clientSecret, String channelId) {
         logger.info("Looking for credentials - ClientId: {}, ChannelId: {}", clientId, channelId);
 
         // Use the method that checks for active credentials
         Optional<ClientCredentials> credentialsOpt = credentialsRepository.findByClientIdAndChannelIdAndActiveTrue(clientId, channelId);
-
+//        Optional<ClientCredentials> credentialsOpt = credentialsRepository.findByClientId(clientId);
         if (credentialsOpt.isEmpty()) {
             logger.warn("Client credentials not found: {} for channel: {}", clientId, channelId);
             return false;
@@ -186,4 +236,6 @@ public class AuthenticationService {
         public LocalDateTime getLastAttempt() { return lastAttempt; }
         public void setLastAttempt(LocalDateTime lastAttempt) { this.lastAttempt = lastAttempt; }
     }
+
+
 }

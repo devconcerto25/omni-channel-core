@@ -38,6 +38,9 @@ public class ClientCredentials {
     @Column(name = "created_by", length = 100)
     private String createdBy;
 
+    @Column(name = "merchant_id", length = 50)
+    private String merchantId;
+
     @PrePersist
     protected void onCreate() {
         createdDate = LocalDateTime.now();
@@ -92,5 +95,13 @@ public class ClientCredentials {
     @Override
     public int hashCode() {
         return Objects.hash(clientId, channelId);
+    }
+
+    public String getMerchantId() {
+        return merchantId;
+    }
+
+    public void setMerchantId(String merchantId) {
+        this.merchantId = merchantId;
     }
 }

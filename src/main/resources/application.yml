@@ -13,16 +13,17 @@ spring:
       keepalive-time: 30000
       leak-detection-threshold: 60000
 
-  redis:
-    host: 10.10.11.252
-    port: 6379
-    database: 2
-    timeout: 2000ms
-    lettuce:
-      pool:
-        max-active: 8
-        max-idle: 8
-        min-idle: 0
+  data:
+    redis:
+      host: 10.10.11.252
+      port: 6379
+      database: 2
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
 
   jpa:
     hibernate:

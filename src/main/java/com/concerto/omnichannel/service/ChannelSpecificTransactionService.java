@@ -138,8 +138,8 @@ public class ChannelSpecificTransactionService {
 
             if (additionalFields != null) {
                 // UPI VPA details
-                upiDetails.setPayerVPA((String) additionalFields.get("payerVPA"));
-                upiDetails.setPayeeVPA((String) additionalFields.get("payeeVPA"));
+                upiDetails.setPayerVPA((String) additionalFields.get("payerVpa"));
+                upiDetails.setPayeeVPA((String) additionalFields.get("payeeVpa"));
 
                 // Account and IFSC details
                 upiDetails.setPayerAccountNumber((String) additionalFields.get("payerAccountNumber"));
