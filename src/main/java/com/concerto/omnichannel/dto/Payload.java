@@ -52,6 +52,9 @@ public class Payload {
     @JsonProperty("additionalFields")
     private Map<String, Object> additionalFields;
 
+    @JsonProperty("paymentMethod")
+    private String paymentMethod;
+
     // Constructors
     public Payload() {}
 
@@ -96,7 +99,5 @@ public class Payload {
         }
         this.additionalFields.put(key, value);
     }
-
-
 
 }

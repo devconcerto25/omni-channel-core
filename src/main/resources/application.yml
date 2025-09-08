@@ -198,3 +198,8 @@ connector:
     UPI: 6000
     PG: 8000
     default: 10000
+
+bbps:
+  original-institution-id: OU01    # Your BBPS OU ID
+  default-agent-institution-id: AI34
+  bbpcu-endpoint: https://bbpcu-endpoint
