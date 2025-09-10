@@ -47,7 +47,9 @@ public class UPIPaymentHandler implements OperationHandler {
             response.setChannel(request.getChannel());
             response.setOperation(request.getOperation());
             response.setPayload(responsePayload);
-
+            /*ObjectMapper mapper = new ObjectMapper();
+            ResponsePayload responsePayload1 = mapper.readValue(responsePayload, ResponsePayload.class);
+            response.setPayload(responsePayload1);*/
             // Check success status
             Boolean success = (Boolean) responseMap.get("success");
             if (success == null) {

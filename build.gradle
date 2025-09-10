@@ -63,6 +63,8 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-security'
 	//Hibernet5
 	implementation 'com.fasterxml.jackson.datatype:jackson-datatype-hibernate6:2.17.2'
+	//Json
+	implementation 'com.google.code.gson:gson:2.11.0'
 
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testImplementation 'io.projectreactor:reactor-test'

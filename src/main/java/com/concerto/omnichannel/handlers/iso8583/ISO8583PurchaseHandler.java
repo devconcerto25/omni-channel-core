@@ -1,4 +1,4 @@
-package com.concerto.omnichannel.operations.handlers;
+package com.concerto.omnichannel.handlers.iso8583;
 
 import com.concerto.omnichannel.connector.Connector;
 import com.concerto.omnichannel.connector.ConnectorFactory;
@@ -47,6 +47,10 @@ public class ISO8583PurchaseHandler implements OperationHandler {
             response.setChannel(request.getChannel());
             response.setOperation(request.getOperation());
             response.setPayload(responsePayload);
+
+            /*ObjectMapper mapper = new ObjectMapper();
+            ResponsePayload responsePayload1 = mapper.readValue(responsePayload, ResponsePayload.class);
+            response.setPayload(responsePayload1);*/
 
             // Check success status
             Boolean success = (Boolean) responseMap.get("success");

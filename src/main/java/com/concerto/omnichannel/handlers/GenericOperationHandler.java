@@ -55,6 +55,9 @@ public class GenericOperationHandler implements OperationHandler {
             response.setChannel(request.getChannel());
             response.setOperation(request.getOperation());
             response.setPayload(responsePayload);
+           /* ObjectMapper mapper = new ObjectMapper();
+            ResponsePayload responsePayload1 = mapper.readValue(responsePayload, ResponsePayload.class);
+            response.setPayload(responsePayload1);*/
 
             // Determine success status using generic checks
             Boolean success = determineSuccessStatus(responseMap);

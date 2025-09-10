@@ -94,6 +94,7 @@ public class TransactionController {
         if (correlationId == null || correlationId.isEmpty()) {
             correlationId = UUID.randomUUID().toString();
         }
+        logger.debug("correlationId in request {}", correlationId);
 
         // Set MDC for logging
         MDC.put("correlationId", correlationId);
@@ -113,7 +114,7 @@ public class TransactionController {
 
             // Process transaction
             TransactionResponse response = mainOrchestrator.orchestrate(
-                    request, clientId, clientSecret, jwtToken
+                    request, clientId, clientSecret, jwtToken, correlationId
             );
 
             // Determine HTTP status based on transaction success

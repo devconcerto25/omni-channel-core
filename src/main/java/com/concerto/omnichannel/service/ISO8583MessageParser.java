@@ -11,6 +11,7 @@ import org.jpos.iso.packager.GenericPackager;
 import org.jpos.iso.packager.ISO87BPackager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -59,6 +60,9 @@ public class ISO8583MessageParser {
 
     @Autowired
     private ConfigurationService configurationService;
+
+    @Autowired
+    private STANGenerationService stanGenerationService;
 
     @PostConstruct
     public void initialize() {
@@ -147,8 +151,8 @@ public class ISO8583MessageParser {
 
         // Map JSON fields to ISO8583 fields
         mapJsonToISO8583Fields(isoMsg, jsonNode);
-
-        logger.debug("ISO8583 message created with MTI: {} using {} packager", mti, packagerType);
+        isoMsg.set(62, "1234");
+        logger.debug("ISO8583 message created with MTI: {} using {} correlationId", mti, MDC.get("correlationId"));
         return isoMsg;
     }
 
@@ -346,7 +350,20 @@ public class ISO8583MessageParser {
         //isoMsg.set(7, getCurrentTimestamp());
 
         // Field 11: System Trace Audit Number (STAN)
-        isoMsg.set(11, generateSTAN());
+        //isoMsg.set(11, generateSTAN());
+        //Generate Terminal specific STAN and store it in Redis
+        if (payload.has("merchantId") && payload.has("terminalId")) {
+            String merchantId = payload.get("merchantId").asText();
+            String terminalId = payload.get("terminalId").asText();
+            String stan = stanGenerationService.generateSTAN(merchantId, terminalId);
+            logger.info("STAN for terminal {} is {}", terminalId, stan);
+            isoMsg.set(11, stan);
+        } else {
+            //Random STAN in case of MerchantId and TerminalId is not present
+            String stan = generateSTAN();
+            isoMsg.set(11, stan);
+            logger.info("STAN without terminal is {}", stan);
+        }
 
         // Field 12: Time, Local Transaction
         isoMsg.set(12, getCurrentTime());
@@ -396,11 +413,11 @@ public class ISO8583MessageParser {
         }*/
 
 
-
         // Handle additional fields from payload
         if (payload.has("additionalFields")) {
             mapAdditionalFieldsFromJson(isoMsg, payload);
         }
+
     }
 
     private void mapAdditionalFieldsFromJson(ISOMsg isoMsg, JsonNode payload) throws Exception {
@@ -424,7 +441,7 @@ public class ISO8583MessageParser {
                         break;*/
                     case "emvdata":
                         isoMsg.set(55, value);
-                    // Add more field mappings as needed
+                        // Add more field mappings as needed
                 }
             } catch (Exception e) {
                 logger.warn("Failed to set ISO field for key: {}", key, e);

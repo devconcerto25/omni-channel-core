@@ -8,12 +8,12 @@ import com.concerto.omnichannel.dto.TransactionResponse;
 import com.concerto.omnichannel.entity.TransactionHeader;
 import com.concerto.omnichannel.repository.TransactionHeaderRepository;
 import com.concerto.omnichannel.validation.BusinessRuleValidator;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import io.github.resilience4j.retry.Retry;
 import io.github.resilience4j.retry.RetryRegistry;
-import io.github.resilience4j.timelimiter.TimeLimiter;
 import io.github.resilience4j.timelimiter.TimeLimiterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -100,8 +100,9 @@ public class MainOrchestrator {
     public TransactionResponse orchestrate(TransactionRequest request,
                                            String clientId,
                                            String clientSecret,
-                                           String token) {
-        String correlationId = UUID.randomUUID().toString();
+                                           String token, String correlationId) {
+        //String correlationId = UUID.randomUUID().toString();
+        logger.debug("new correlationId");
         return orchestrateInternal(request, clientId, clientSecret, token, correlationId);
     }
 
@@ -113,7 +114,7 @@ public class MainOrchestrator {
 
         // 1. Create transaction header for tracking
         TransactionHeader header = createTransactionHeader(request, correlationId);
-
+        logger.debug("CorrelationId while orchestration {}", correlationId);
         try {
             // 2. Business rule validation
             businessRuleValidator.validateBusinessRules(request);
@@ -216,7 +217,7 @@ public class MainOrchestrator {
 
     private TransactionResponse parseConnectorResponse(String responsePayload,
                                                        TransactionRequest request,
-                                                       TransactionHeader header) {
+                                                       TransactionHeader header) throws JsonProcessingException {
         try {
             // Parse the JSON response from connector
             @SuppressWarnings("unchecked")
@@ -237,7 +238,9 @@ public class MainOrchestrator {
 
             response.setSuccess(success);
             response.setPayload(responsePayload);
-
+           /* ObjectMapper mapper = new ObjectMapper();
+            ResponsePayload errorPayload = mapper.readValue(responsePayload, ResponsePayload.class);
+            response.setPayload(errorPayload);*/
             // Extract common fields
             if (responseMap.containsKey("authorizationCode")) {
                 response.addAdditionalData("authorizationCode", responseMap.get("authorizationCode"));
@@ -269,7 +272,9 @@ public class MainOrchestrator {
             errorResponse.setErrorMessage("Failed to parse connector response");
             errorResponse.setErrorCode("RESPONSE_PARSE_ERROR");
             errorResponse.setPayload(responsePayload);
-
+           /* ObjectMapper mapper = new ObjectMapper();
+            ResponsePayload errorPayload = mapper.readValue(responsePayload, ResponsePayload.class);
+            errorResponse.setPayload(errorPayload);*/
             return errorResponse;
         }
     }
