@@ -3,8 +3,9 @@ spring:
     url: jdbc:postgresql://10.10.11.252:5432/omni_core_db
     username: postgres
     password: Password@123
+    driver-class-name: org.postgresql.Driver
     hikari:
-      maximum-pool-size: 20
+      maximum-pool-size: 150
       minimum-idle: 5
       connection-timeout: 60000
       idle-timeout: 300000
@@ -24,6 +25,7 @@ spring:
           max-active: 8
           max-idle: 8
           min-idle: 0
+          max-wait: -1ms
 
   jpa:
     hibernate:
@@ -58,12 +60,14 @@ resilience4j:
       authentication:
         baseConfig: default
         failureRateThreshold: 60
+        slidingWindowSize: 20
       BBPS-fetchBill:
         baseConfig: default
         waitDurationInOpenState: 10s
       ISO8583-purchase:
         baseConfig: default
         failureRateThreshold: 40
+        slidingWindowSize : 20
 
   retry:
     configs:
@@ -198,3 +202,12 @@ connector:
     UPI: 6000
     PG: 8000
     default: 10000
+
+server:
+  tomcat:
+    threads:
+      max: 300
+      min-spare: 100
+    connection-timeout: 20000
+    max-connections: 8192
+    accept-count: 200

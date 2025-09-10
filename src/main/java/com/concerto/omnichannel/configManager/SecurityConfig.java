@@ -1,5 +1,5 @@
 // Updated Security Configuration to fix 403 Forbidden
-package com.concerto.omnichannel.config;
+package com.concerto.omnichannel.configManager;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -41,7 +41,7 @@ public class SecurityConfig {
                         // For testing purposes, allow all transaction endpoints without authentication
                         // In production, you should implement proper JWT authentication filter
                         .requestMatchers("/api/v1/transactions/**").permitAll()
-
+                        .requestMatchers("/api/v1/monitor/**").permitAll()
                         // All other requests need authentication
                         .anyRequest().authenticated()
                 );

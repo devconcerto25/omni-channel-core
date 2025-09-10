@@ -188,7 +188,7 @@ public class ISO8583MessageParser {
      */
     public Map<String, Object> iso8583ToJson(ISOMsg isoMsg) throws ISOException {
         logger.debug("Converting ISO8583 to JSON, MTI: {}", isoMsg.getMTI());
-
+        logger.info("Converting ISO8583 to JSON MTI: {}", isoMsg.getMTI());
         Map<String, Object> jsonResponse = new HashMap<>();
 
         // Add basic message information

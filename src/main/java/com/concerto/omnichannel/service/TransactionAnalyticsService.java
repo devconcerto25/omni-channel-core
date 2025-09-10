@@ -19,10 +19,10 @@ public class TransactionAnalyticsService {
     /**
      * Get cross-channel transaction summary
      */
-    public List<Map<String, Object>> getChannelSummary(LocalDateTime startDate, LocalDateTime endDate) {
+    public List<Map<String, Object>> getChannelSummary(String channel, LocalDateTime startDate, LocalDateTime endDate) {
         String sql = """
             SELECT 
-                channel,
+                channel = :channel,
                 COUNT(*) as transaction_count,
                 SUM(amount) as total_amount,
                 AVG(processing_time_ms) as avg_processing_time,
@@ -35,6 +35,7 @@ public class TransactionAnalyticsService {
         """;
 
         Query query = entityManager.createNativeQuery(sql);
+        query.setParameter("channel", channel);
         query.setParameter("startDate", startDate);
         query.setParameter("endDate", endDate);
 

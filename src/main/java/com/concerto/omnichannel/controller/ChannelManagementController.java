@@ -5,6 +5,9 @@ import com.concerto.omnichannel.dto.ApiResponse;
 import com.concerto.omnichannel.service.ChannelSpecificTransactionService;
 import com.concerto.omnichannel.service.TransactionAnalyticsService;
 import com.concerto.omnichannel.entity.TransactionHeader;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.StringToClassMapItem;
+import io.swagger.v3.oas.annotations.media.Schema;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
@@ -142,13 +145,29 @@ public class ChannelManagementController {
      */
     @GetMapping("/analytics/summary")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getChannelSummary(
+            @RequestParam
+            String channel,
+
+            @Parameter(
+                    name = "startDate",
+                    description = "Start date for transaction search in ISO 8601 format",
+                    example = "2024-01-15T10:30:00.000+05:30",
+                    schema = @Schema(type = "string", format = "date-time")
+            )
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
             LocalDateTime startDate,
+
+            @Parameter(
+                    name = "endDate",
+                    description = "End date for transaction search in ISO 8601 format",
+                    example = "2024-01-15T10:30:00.000+05:30",
+                    schema = @Schema(type = "string", format = "date-time")
+            )
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
             LocalDateTime endDate) {
 
         try {
-            List<Map<String, Object>> summary = analyticsService.getChannelSummary(startDate, endDate);
+            List<Map<String, Object>> summary = analyticsService.getChannelSummary(channel, startDate, endDate);
 
             return ResponseEntity.ok(
                     ApiResponse.success(summary, "Channel summary retrieved",

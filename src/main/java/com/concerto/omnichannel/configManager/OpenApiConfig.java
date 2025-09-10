@@ -14,6 +14,8 @@ import io.swagger.v3.oas.annotations.OpenAPIDefinition;
 import io.swagger.v3.oas.models.Components;
 import org.springdoc.core.models.GroupedOpenApi;
 
+import javax.swing.*;
+
 /*@Configuration
 public class OpenApiConfig {
 
@@ -113,6 +115,14 @@ public class OpenApiConfig {
         return GroupedOpenApi.builder()
                 .group("actuator")
                 .pathsToMatch("/actuator/**")
+                .build();
+    }
+
+    @Bean
+    public GroupedOpenApi monitorApi(){
+        return GroupedOpenApi.builder()
+                .group("monitor")
+                .pathsToMatch("/api/v1/monitor/**")
                 .build();
     }
 }

@@ -13,6 +13,18 @@ java {
 	}
 }
 
+bootRun {
+	jvmArgs = [
+			"-Xms2g", "-Xmx4g",
+			"-XX:+UseG1GC",
+			"-XX:MaxGCPauseMillis=100",
+			"-XX:+UseStringDeduplication",
+			"-XX:NewRatio=1",
+			"-server"
+	]
+}
+
+
 repositories {
 	mavenCentral()
 	// Add Maven Central snapshots for jPOS
