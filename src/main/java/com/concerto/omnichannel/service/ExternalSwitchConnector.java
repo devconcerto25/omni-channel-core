@@ -301,9 +301,5 @@ public class ExternalSwitchConnector {
         return new java.text.SimpleDateFormat("MMddHHmmss").format(new java.util.Date());
     }
 
-    // ========== REMOVED OLD METHODS ==========
-    // Removed: sendMessageWithLength() - now using buildFinalMessage()
-    // Removed: receiveMessageWithLength() - now using simple buffer read like Android
-    // The old methods were causing the connection issues because they didn't match
-    // the Android implementation that works with your switch
+
 }

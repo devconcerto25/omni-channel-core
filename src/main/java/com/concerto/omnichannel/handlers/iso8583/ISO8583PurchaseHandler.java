@@ -36,7 +36,8 @@ public class ISO8583PurchaseHandler implements OperationHandler {
             String requestPayload = objectMapper.writeValueAsString(request);
 
             // Process through connector
-            String responsePayload = connector.process(requestPayload);
+            String responsePayload = connector.process(request);
+//            String responsePayload = connector.processAsync(request).get();
 
             // Parse connector response
             @SuppressWarnings("unchecked")

@@ -5,27 +5,28 @@ spring:
     password: Password@123
     driver-class-name: org.postgresql.Driver
     hikari:
-      maximum-pool-size: 150
-      minimum-idle: 5
-      connection-timeout: 60000
-      idle-timeout: 300000
-      max-lifetime: 1200000
-      validation-timeout: 5000
-      keepalive-time: 30000
-      leak-detection-threshold: 60000
+      maximum-pool-size: 20
+      minimum-idle: 20
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      validation-timeout: 3000
+      keepalive-time: 60000
+      leak-detection-threshold: 30000
 
   data:
     redis:
       host: 10.10.11.252
       port: 6379
       database: 2
-      timeout: 2000ms
+      timeout: 1000ms
+      password: Password@123
       lettuce:
         pool:
-          max-active: 8
-          max-idle: 8
-          min-idle: 0
-          max-wait: -1ms
+          max-active: 50
+          max-idle: 20
+          min-idle: 5
+          max-wait: 1000ms
 
   jpa:
     hibernate:
@@ -104,12 +105,12 @@ resilience4j:
 # Channel specific configurations
 channels:
   BBPS:
-    timeout: 3000
+    timeout: 5000
     maxRetries: 2
     circuitBreaker: true
     batchSize: 100
   ISO8583:
-    timeout: 5000
+    timeout: 10000
     maxRetries: 1
     circuitBreaker: true
     batchSize: 50
@@ -147,7 +148,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,metrics,info,prometheus
+        include: health,metrics,info,prometheus,connectionpools
   endpoint:
     health:
       show-details: always
@@ -155,6 +156,11 @@ management:
     export:
       prometheus:
         enabled: true
+    enable:
+      jvm: true
+      system: true
+      tomcat: true
+      hikaricp: true
 
 # Custom application properties
 app:
@@ -171,6 +177,11 @@ app:
 
 # ISO8583 Configuration
 iso8583:
+  connection:
+    pool:
+      size: 20
+      timeout: 10000
+      keepAlive: true
   enabled: true
   packager:
     type: ascii
@@ -187,27 +198,42 @@ iso8583:
 # External Switch Configuration
 switch:
   default:
-    host: 10.10.10.166
-    port: 1276
+    host: localhost
+    port: 5000
   connection:
     timeout: 5000
+    pool:
+      maxSize: 50             # Increased from 10
+      coreSize: 20            # New: minimum connections
+      maxIdleTime: 300000     # 5 minutes
+      healthCheckInterval: 60000 # 1 minute
   read:
-    timeout: 30000
+    timeout: 15000
 
 # Connector Configuration
 connector:
   timeouts:
-    ISO8583: 5000
-    BBPS: 3000
-    UPI: 6000
-    PG: 8000
-    default: 10000
+    ISO8583: 5000             # Reduced from 8000
+    BBPS: 2000               # Reduced from 3000
+    UPI: 4000                # Reduced from 6000
+    PG: 6000                 # Reduced from 8000
+    default: 5000
 
 server:
   tomcat:
     threads:
-      max: 300
-      min-spare: 100
-    connection-timeout: 20000
-    max-connections: 8192
-    accept-count: 200
+      max: 500
+      min-spare: 150
+    connection-timeout: 10000
+    max-connections: 10000
+    accept-count: 500
+    max-http-post-size: 2MB
+    uri-encoding: UTF-8
+    processor-cache: 500
+
+async:
+  executor:
+    core-pool-size: 50      # Increased
+    max-pool-size: 200      # Increased
+    queue-capacity: 1000    # Increased
+    keep-alive: 60          # Seconds

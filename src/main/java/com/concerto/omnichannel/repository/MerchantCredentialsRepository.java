@@ -32,4 +32,7 @@ public interface MerchantCredentialsRepository extends JpaRepository<MerchantCre
     List<MerchantCredentials> findExpiredCredentials();
 
     boolean existsByMerchantIdAndChannel(String merchantId, String channel);
+
+    Optional<MerchantCredentials> findByMerchantIdAndChannelAndIsActiveTrue(String merchantId, String channelId);
+
 }

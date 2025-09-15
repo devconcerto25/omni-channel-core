@@ -30,4 +30,6 @@ public interface MerchantInfoRepository extends JpaRepository<MerchantInfo, Long
     List<MerchantInfo> findActiveMerchantsByCity(@Param("city") String city);
 
     boolean existsByMerchantId(String merchantId);
+
+    Optional<MerchantInfo> findByMerchantIdAndIsActiveTrue(String merchantId);
 }

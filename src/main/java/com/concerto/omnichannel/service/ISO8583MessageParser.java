@@ -134,7 +134,6 @@ public class ISO8583MessageParser {
      */
     public ISOMsg jsonToISO8583FromJson(String jsonPayload) throws Exception {
         JsonNode jsonNode = objectMapper.readTree(jsonPayload);
-
         // Determine packager type from payload or use default
         String packagerType = getPackagerType(jsonNode);
         GenericPackager packager = getPackager(packagerType);
@@ -151,7 +150,7 @@ public class ISO8583MessageParser {
 
         // Map JSON fields to ISO8583 fields
         mapJsonToISO8583Fields(isoMsg, jsonNode);
-        isoMsg.set(62, "1234");
+        //isoMsg.set(62, "1234");
         logger.debug("ISO8583 message created with MTI: {} using {} correlationId", mti, MDC.get("correlationId"));
         return isoMsg;
     }
@@ -395,7 +394,7 @@ public class ISO8583MessageParser {
         }*/
 
         // Field 37: Retrieval Reference Number
-        isoMsg.set(37, generateRRN());
+        //isoMsg.set(37, generateRRN());
 
         // Field 41: Card Acceptor Terminal ID
         if (payload.has("terminalId")) {
@@ -439,8 +438,8 @@ public class ISO8583MessageParser {
                     case "merchantcategorycode":
                         isoMsg.set(18, value);
                         break;*/
-                    case "emvdata":
-                        isoMsg.set(55, value);
+                    /*case "emvdata":
+                        isoMsg.set(55, value);*/
                         // Add more field mappings as needed
                 }
             } catch (Exception e) {
@@ -535,6 +534,10 @@ public class ISO8583MessageParser {
         // Map important response fields
         if (isoMsg.hasField(2)) {
             jsonResponse.put("cardNumber", maskCardNumber(isoMsg.getString(2)));
+        }
+
+        if (isoMsg.hasField(3)){
+            jsonResponse.put("processingCode", isoMsg.getString(3));
         }
 
         if (isoMsg.hasField(4)) {

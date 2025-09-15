@@ -19,13 +19,16 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
@@ -64,137 +67,345 @@ public class MainOrchestrator {
     @Autowired
     private ChannelSpecificTransactionService channelSpecificTransactionService;
 
-    @Transactional
-    public CompletableFuture<TransactionResponse> orchestrateAsync(
-            TransactionRequest request,
-            String clientId,
-            String clientSecret,
-            String token) {
+    @Autowired
+    private STANGenerationService stanGenerationService;
 
-        // Generate correlation ID for tracing
-        String correlationId = UUID.randomUUID().toString();
-        MDC.put("correlationId", correlationId);
-        MDC.put("channel", request.getChannel());
-        MDC.put("operation", request.getOperation());
+    private static final String STAN_FORMAT = "%06d";
 
-        logger.info("Starting async transaction orchestration for channel: {} operation: {}",
-                request.getChannel(), request.getOperation());
-
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                // Set MDC in async context
-                MDC.put("correlationId", correlationId);
-                MDC.put("channel", request.getChannel());
-
-                return orchestrateInternal(request, clientId, clientSecret, token, correlationId);
-
-            } catch (Exception e) {
-                logger.error("Async orchestration failed with error", e);
-                throw new CompletionException(e);
-            } finally {
-                MDC.clear();
-            }
-        });
-    }
+    @Autowired
+    private RedisTemplate<String, String> redisTemplate;
 
     public TransactionResponse orchestrate(TransactionRequest request,
                                            String clientId,
                                            String clientSecret,
                                            String token, String correlationId) {
         //String correlationId = UUID.randomUUID().toString();
-        logger.debug("new correlationId");
+        //logger.debug("new correlationId");
         return orchestrateInternal(request, clientId, clientSecret, token, correlationId);
     }
 
+    // SYNCHRONOUS VERSION - Optimized for high throughput
     private TransactionResponse orchestrateInternal(TransactionRequest request,
                                                     String clientId,
                                                     String clientSecret,
                                                     String token,
                                                     String correlationId) {
-
-        // 1. Create transaction header for tracking
-        TransactionHeader header = createTransactionHeader(request, correlationId);
-        logger.debug("CorrelationId while orchestration {}", correlationId);
         try {
-            // 2. Business rule validation
+            // 1. Store request in Redis immediately (fast operation)
+            storeRequestInRedis(correlationId, request, clientId, clientSecret, token);
+
+            // 2. Skipping business validation for performance (can be added back later)
             businessRuleValidator.validateBusinessRules(request);
 
-            // 3. Authentication with circuit breaker
+            // 3. Skipping authentication for performance testing (can be added back later)
             boolean authenticated = executeWithResilience(
                     "authentication",
-                    () -> authenticationService.authenticate(clientId, clientSecret, token, request.getChannel()),
+                    () -> authenticationService.authenticate(clientId, clientSecret, token, request.getChannel(), correlationId),
                     Duration.ofSeconds(2)
             );
 
-            if (!authenticated) {
-                header.setStatus("AUTH_FAILED");
-                header.setErrorMessage("Authentication failed");
-                header.setResponseTimestamp(LocalDateTime.now());
-                transactionHeaderRepository.save(header);
-
+            if (!authenticated){
+                updateRedisWithAuthFailure(correlationId, "Authentication Failed");
                 throw new SecurityException("Authentication failed for channel: " + request.getChannel());
             }
 
-            header.setStatus("AUTHENTICATED");
-            transactionHeaderRepository.save(header);
-
-            // 4. Get appropriate connector using factory pattern
+            // 4. Process through connector (only essential operation)
             Connector connector = connectorFactory.getConnector(request.getChannel());
+            logger.info("Using connector: {} for channel: {}", connector.getConnectorType(), request.getChannel());
 
-            logger.info("Using connector: {} for channel: {}",
-                    connector.getConnectorType(), request.getChannel());
+            String responsePayload = connector.process(request);
 
-            // 5. Update processing status
-            header.setStatus("PROCESSING");
-            transactionHeaderRepository.save(header);
+            // 5. Parse response (fast, CPU-bound)
+            TransactionResponse response = parseConnectorResponseSimple(responsePayload, request, correlationId);
 
-            // 6. Process transaction through connector with resilience patterns
-            String requestPayload = objectMapper.writeValueAsString(request);
-            String responsePayload = executeWithResilience(
-                    request.getChannel() + "-" + request.getOperation(),
-                    () -> {
-                        try {
-                            return connector.process(requestPayload);
-                        } catch (Exception e) {
-                            throw new RuntimeException("Connector processing failed", e);
-                        }
-                    },
-                    getTimeoutForChannel(request.getChannel())
-            );
+            // 6. Store response in Redis (fast operation)
+            storeResponseInRedis(correlationId, response);
 
-            // 7. Parse response and create transaction response
-            TransactionResponse response = parseConnectorResponse(responsePayload, request, header);
-            channelSpecificTransactionService.saveChannelSpecificDetails(
-                    header, request, response);
-            // 8. Update final status
-            header.setStatus(response.isSuccess() ? "SUCCESS" : "FAILED");
-            if (!response.isSuccess()) {
-                header.setErrorMessage(response.getErrorMessage());
-                header.setErrorCode(response.getErrorCode());
-            }
-            header.setResponseTimestamp(LocalDateTime.now());
-            transactionHeaderRepository.save(header);
-
-            response.setCorrelationId(correlationId);
-            response.setTransactionId(header.getId());
+            // 7. Trigger async persistence (fire and forget)
+            persistDataAsync(correlationId);
 
             logger.info("Transaction orchestration completed with status: {}",
                     response.isSuccess() ? "SUCCESS" : "FAILED");
             return response;
 
         } catch (Exception e) {
-            // Update transaction status on failure
-            header.setStatus("FAILED");
-            header.setErrorMessage(e.getMessage());
-            header.setResponseTimestamp(LocalDateTime.now());
-            transactionHeaderRepository.save(header);
-
             logger.error("Transaction orchestration failed", e);
 
-            // Create error response
-            return createErrorResponse(request, header, correlationId, e);
+            // Store error in Redis and create error response
+            TransactionResponse errorResponse = createErrorResponse(request, null, correlationId, e);
+            storeResponseInRedis(correlationId, errorResponse);
+            persistDataAsync(correlationId);
+
+            return errorResponse;
         }
     }
+
+    // ASYNCHRONOUS VERSION - Fully non-blocking
+    public CompletableFuture<TransactionResponse> orchestrateAsync(
+            TransactionRequest request,
+            String clientId,
+            String clientSecret,
+            String token,
+            String correlationId) {
+
+        logger.info("Starting async transaction orchestration for channel: {} operation: {}",
+                request.getChannel(), request.getOperation());
+
+        return CompletableFuture
+                .supplyAsync(() -> {
+                    // Store request in Redis
+                    storeRequestInRedis(correlationId, request, clientId, clientSecret, token);
+                    return request;
+                })
+                .thenCompose(req -> {
+                    businessRuleValidator.validateBusinessRules(request);
+
+                    boolean authenticated = executeWithResilience(
+                            "authentication",
+                            () -> authenticationService.authenticate(clientId, clientSecret, token, request.getChannel(), correlationId),
+                            Duration.ofSeconds(2)
+                    );
+
+                    if (!authenticated){
+                        updateRedisWithAuthFailure(correlationId, "Authentication Failed");
+                        throw new SecurityException("Authentication failed for channel: " + request.getChannel());
+                    }
+                    // Get connector and process asynchronously
+                    Connector connector = connectorFactory.getConnector(req.getChannel());
+                    try {
+                        return connector.processAsync(req);
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                })
+                .thenApply(responsePayload -> {
+                    // Parse response and store in Redis
+                    TransactionResponse response = parseConnectorResponseSimple(responsePayload, request, correlationId);
+                    storeResponseInRedis(correlationId, response);
+
+                    // Trigger async persistence
+                    persistDataAsync(correlationId);
+
+                    logger.info("Async transaction orchestration completed with status: {}",
+                            response.isSuccess() ? "SUCCESS" : "FAILED");
+                    return response;
+                })
+                .exceptionally(throwable -> {
+                    logger.error("Async transaction orchestration failed", throwable);
+
+                    TransactionResponse errorResponse = createErrorResponse(request, null, correlationId,
+                            new RuntimeException(throwable));
+                    storeResponseInRedis(correlationId, errorResponse);
+                    persistDataAsync(correlationId);
+
+                    return errorResponse;
+                })
+                .orTimeout(30, TimeUnit.SECONDS);
+    }
+
+    // Simplified response parsing without database dependency
+    private TransactionResponse parseConnectorResponseSimple(String responsePayload,
+                                                             TransactionRequest request,
+                                                             String correlationId) {
+        try {
+            Map<String, Object> responseMap = objectMapper.readValue(responsePayload, Map.class);
+
+            TransactionResponse response = new TransactionResponse();
+            response.setChannel(request.getChannel());
+            response.setOperation(request.getOperation());
+            response.setCorrelationId(correlationId);
+
+            Boolean success = (Boolean) responseMap.get("success");
+            if (success == null) {
+                success = checkSuccessIndicators(responseMap);
+            }
+            response.setSuccess(success);
+            response.setPayload(responsePayload);
+
+            // Extract key fields
+            if (responseMap.containsKey("authorizationCode")) {
+                response.addAdditionalData("authorizationCode", responseMap.get("authorizationCode"));
+            }
+            if (responseMap.containsKey("rrn")) {
+                response.setExternalReference((String) responseMap.get("rrn"));
+            }
+            if (!success) {
+                response.setErrorCode((String) responseMap.get("errorCode"));
+                response.setErrorMessage((String) responseMap.get("errorMessage"));
+            }
+
+            return response;
+
+        } catch (Exception e) {
+            logger.error("Failed to parse connector response", e);
+
+            TransactionResponse errorResponse = new TransactionResponse();
+            errorResponse.setChannel(request.getChannel());
+            errorResponse.setOperation(request.getOperation());
+            errorResponse.setCorrelationId(correlationId);
+            errorResponse.setSuccess(false);
+            errorResponse.setErrorMessage("Failed to parse connector response: " + e.getMessage());
+            errorResponse.setErrorCode("RESPONSE_PARSE_ERROR");
+            errorResponse.setPayload(responsePayload);
+
+            return errorResponse;
+        }
+    }
+
+    private void storeRequestInRedis(String correlationId, TransactionRequest request,
+                                     String clientId, String clientSecret, String token) {
+        try {
+            Map<String, Object> requestData = Map.of(
+                    "request", request,
+                    "clientId", clientId != null ? clientId : "",
+                    "clientSecret", clientSecret != null ? clientSecret : "",
+                    "token", token != null ? token : "",
+                    "timestamp", System.currentTimeMillis(),
+                    "status", "RECEIVED"
+            );
+
+            String jsonData = objectMapper.writeValueAsString(requestData);
+            String key = "txn:request:" + correlationId;
+
+            redisTemplate.opsForValue().set(key, jsonData, Duration.ofHours(24));
+            logger.debug("Stored request in Redis for correlation: {}", correlationId);
+
+        } catch (Exception e) {
+            logger.error("Failed to store request in Redis for correlation: {}", correlationId, e);
+        }
+    }
+
+    // Store response data as JSON string
+    private void storeResponseInRedis(String correlationId, TransactionResponse response) {
+        try {
+            Map<String, Object> responseData = Map.of(
+                    "response", response,
+                    "timestamp", System.currentTimeMillis(),
+                    "status", response.isSuccess() ? "SUCCESS" : "FAILED"
+            );
+
+            String jsonData = objectMapper.writeValueAsString(responseData);
+            String key = "txn:response:" + correlationId;
+
+            redisTemplate.opsForValue().set(key, jsonData, Duration.ofHours(24));
+            logger.debug("Stored response in Redis for correlation: {}", correlationId);
+
+        } catch (Exception e) {
+            logger.error("Failed to store response in Redis for correlation: {}", correlationId, e);
+        }
+    }
+
+    // Update Redis with authentication failure
+    private void updateRedisWithAuthFailure(String correlationId, String errorMessage) {
+        try {
+            String requestKey = "txn:request:" + correlationId;
+            String jsonData = (String) redisTemplate.opsForValue().get(requestKey);
+
+            if (jsonData != null) {
+                Map<String, Object> requestData = objectMapper.readValue(jsonData, Map.class);
+                requestData.put("status", "AUTH_FAILED");
+                requestData.put("errorMessage", errorMessage);
+                requestData.put("authFailureTimestamp", System.currentTimeMillis());
+
+                String updatedJson = objectMapper.writeValueAsString(requestData);
+                redisTemplate.opsForValue().set(requestKey, updatedJson, Duration.ofHours(24));
+                logger.debug("Updated Redis with auth failure for correlation: {}", correlationId);
+            }
+        } catch (Exception e) {
+            logger.error("Failed to update Redis with auth failure for correlation: {}", correlationId, e);
+        }
+    }
+
+    // Optimized async persistence with JSON string handling
+    @Async("databaseTaskExecutor")
+    private void persistDataAsync(String correlationId) {
+        try {
+            Thread.sleep(100); // Small delay to ensure Redis operations complete
+
+            String requestKey = "txn:request:" + correlationId;
+            String responseKey = "txn:response:" + correlationId;
+
+            String requestJson = (String) redisTemplate.opsForValue().get(requestKey);
+            String responseJson = (String) redisTemplate.opsForValue().get(responseKey);
+
+            if (requestJson == null) {
+                logger.error("Missing request data in Redis for correlation: {}", correlationId);
+                return;
+            }
+
+            if (responseJson == null) {
+                logger.error("Missing response data in Redis for correlation: {}", correlationId);
+                return;
+            }
+
+            // Parse JSON data
+            Map<String, Object> requestData = objectMapper.readValue(requestJson, Map.class);
+            Map<String, Object> responseData = objectMapper.readValue(responseJson, Map.class);
+
+            // Extract objects
+            Map<String, Object> requestMap = (Map<String, Object>) requestData.get("request");
+            Map<String, Object> responseMap = (Map<String, Object>) responseData.get("response");
+
+            // Convert back to objects
+            TransactionRequest request = objectMapper.convertValue(requestMap, TransactionRequest.class);
+            TransactionResponse response = objectMapper.convertValue(responseMap, TransactionResponse.class);
+
+            // Create transaction header
+            TransactionHeader header = new TransactionHeader();
+            header.setChannel(request.getChannel());
+            header.setOperation(request.getOperation());
+            header.setCorrelationId(correlationId);
+
+            // Use timestamps from Redis data
+            Long requestTimestamp = ((Number) requestData.get("timestamp")).longValue();
+            Long responseTimestamp = ((Number) responseData.get("timestamp")).longValue();
+
+            header.setRequestTimestamp(LocalDateTime.ofInstant(
+                    Instant.ofEpochMilli(requestTimestamp), ZoneId.systemDefault()));
+            header.setResponseTimestamp(LocalDateTime.ofInstant(
+                    Instant.ofEpochMilli(responseTimestamp), ZoneId.systemDefault()));
+
+            header.setStatus((String) responseData.get("status"));
+
+            if (request.getPayload() != null) {
+                header.setTransactionType(request.getPayload().getTransactionType());
+                header.setAmount(request.getPayload().getAmount());
+                header.setCurrency(request.getPayload().getCurrency());
+                header.setMerchantId(request.getPayload().getMerchantId());
+                header.setTerminalId(request.getPayload().getTerminalId());
+            }
+
+            if (!response.isSuccess()) {
+                header.setErrorMessage(response.getErrorMessage());
+                header.setErrorCode(response.getErrorCode());
+            }
+
+            // Save to database
+            TransactionHeader savedHeader = transactionHeaderRepository.save(header);
+
+            // Save channel-specific details
+            try {
+                channelSpecificTransactionService.saveChannelSpecificDetails(savedHeader, request, response);
+            } catch (Exception e) {
+                logger.error("Failed to save channel-specific details for correlation: {}", correlationId, e);
+            }
+
+            // Update Redis with transaction ID
+            responseData.put("transactionId", savedHeader.getId());
+            String updatedResponseJson = objectMapper.writeValueAsString(responseData);
+            redisTemplate.opsForValue().set(responseKey, updatedResponseJson, Duration.ofHours(24));
+
+            logger.debug("Async persistence completed for correlation: {}", correlationId);
+
+            // Clean up request data after successful persistence
+            redisTemplate.delete(requestKey);
+
+        } catch (Exception e) {
+            logger.error("Async persistence failed for correlation: {}", correlationId, e);
+        }
+    }
+
+
 
     private TransactionHeader createTransactionHeader(TransactionRequest request, String correlationId) {
         TransactionHeader header = new TransactionHeader();
@@ -359,5 +570,17 @@ public class MainOrchestrator {
             default -> Duration.ofSeconds(10);
         };
     }
+
+    // Helper class for passing data through the async chain
+    private static class ProcessingResult {
+        final TransactionHeader header;
+        final String responsePayload;
+
+        ProcessingResult(TransactionHeader header, String responsePayload) {
+            this.header = header;
+            this.responsePayload = responsePayload;
+        }
+    }
+
 
 }

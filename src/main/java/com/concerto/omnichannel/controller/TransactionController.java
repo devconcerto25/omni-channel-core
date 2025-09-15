@@ -3,9 +3,14 @@ package com.concerto.omnichannel.controller;
 import com.concerto.omnichannel.dto.TransactionRequest;
 import com.concerto.omnichannel.dto.TransactionResponse;
 import com.concerto.omnichannel.dto.ApiResponse;
+import com.concerto.omnichannel.model.ErrorDetails;
+import com.concerto.omnichannel.service.AsyncExternalSwitchConnector;
+import com.concerto.omnichannel.service.ISO8583MessageParser;
 import com.concerto.omnichannel.service.MainOrchestrator;
 import com.concerto.omnichannel.service.TransactionService;
 import com.concerto.omnichannel.utils.ValidationUtils;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -24,8 +29,11 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 
 @RestController
@@ -152,7 +160,7 @@ public class TransactionController {
         }
     }
 
-    @PostMapping("/process-async")
+    /*@PostMapping("/process-async")
     @Operation(
             summary = "Process transaction asynchronously",
             description = "Process transaction asynchronously for high-volume channels",
@@ -198,6 +206,104 @@ public class TransactionController {
             logger.error("Failed to submit transaction for async processing", e);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(createErrorApiResponse("Failed to submit transaction", correlationId, e));
+        } finally {
+            MDC.clear();
+        }
+    }*/
+
+
+    @PostMapping("/process-async")
+    @Operation(
+            summary = "Process transaction asynchronously",
+            description = "Process transaction asynchronously and return actual ISO response",
+            security = @SecurityRequirement(name = "bearerAuth")
+    )
+    public CompletableFuture<ResponseEntity<ApiResponse<TransactionResponse>>> processTransactionAsync(
+            @Valid @RequestBody TransactionRequest request,
+            @RequestHeader(value = "X-Client-Id", required = false) String clientId,
+            @RequestHeader(value = "X-Client-Secret", required = false) String clientSecret,
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+            HttpServletRequest httpRequest) {
+
+        if (correlationId == null || correlationId.isEmpty()) {
+            correlationId = UUID.randomUUID().toString();
+        }
+
+        final String finalCorrelationId = correlationId;
+        MDC.put("correlationId", correlationId);
+        MDC.put("channel", request.getChannel());
+
+        try {
+            String jwtToken = extractJwtToken(authorizationHeader);
+            ValidationUtils.validateTransactionRequest(request);
+
+            logger.info("Starting async transaction processing for correlation: {}", correlationId);
+
+            // Start async processing and return the CompletableFuture
+            return mainOrchestrator.orchestrateAsync(request, clientId, clientSecret, jwtToken, correlationId)
+                    .thenApply(transactionResponse -> {
+                        // Success - return actual ISO response
+                        logger.info("Async transaction completed successfully for correlation: {}", finalCorrelationId);
+
+                        ApiResponse<TransactionResponse> response = ApiResponse.<TransactionResponse>builder()
+                                .success(true)
+                                .data(transactionResponse)
+                                .message("Transaction processed successfully")
+                                .timestamp(LocalDateTime.now())
+                                .correlationId(finalCorrelationId)
+                                .build();
+
+                        return ResponseEntity.ok(response);
+                    })
+                    .exceptionally(throwable -> {
+                        // Error handling
+                        logger.error("Async transaction failed for correlation: {}", finalCorrelationId, throwable);
+
+                        ApiResponse<TransactionResponse> errorResponse = ApiResponse.<TransactionResponse>builder()
+                                .success(false)
+                                .data(null)
+                                .message("Transaction failed: " + throwable.getMessage())
+                                .timestamp(LocalDateTime.now())
+                                .correlationId(finalCorrelationId)
+                                .error(throwable.getMessage() != null ? throwable.getMessage() : "Unknown error occurred")
+                                .build();
+
+                        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+                    })
+                    .orTimeout(30, TimeUnit.SECONDS) // Add timeout
+                    .handle((result, timeoutException) -> {
+                        if (timeoutException instanceof TimeoutException) {
+                            logger.error("Transaction timed out for correlation: {}", finalCorrelationId);
+
+                            ApiResponse<TransactionResponse> timeoutResponse = ApiResponse.<TransactionResponse>builder()
+                                    .success(false)
+                                    .data(null)
+                                    .message("Transaction timed out")
+                                    .timestamp(LocalDateTime.now())
+                                    .correlationId(finalCorrelationId)
+                                    .build();
+
+                            return ResponseEntity.status(HttpStatus.REQUEST_TIMEOUT).body(timeoutResponse);
+                        }
+                        return result;
+                    });
+
+        } catch (Exception e) {
+            logger.error("Failed to initiate async transaction processing", e);
+
+            // Return failed CompletableFuture for immediate errors
+            ApiResponse<TransactionResponse> errorResponse = ApiResponse.<TransactionResponse>builder()
+                    .success(false)
+                    .data(null)
+                    .message("Failed to initiate transaction")
+                    .timestamp(LocalDateTime.now())
+                    .correlationId(correlationId)
+                    .error(e.getMessage() != null ? e.getMessage() : "Unknown error occurred")
+                    .build();
+
+            return CompletableFuture.completedFuture(
+                    ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse));
         } finally {
             MDC.clear();
         }
@@ -298,5 +404,28 @@ public class TransactionController {
                 .timestamp(LocalDateTime.now())
                 .correlationId(correlationId)
                 .build();
+    }
+
+    @Autowired
+    private ObjectMapper objectMapper;
+    @Autowired
+    private ISO8583MessageParser messageParser;
+
+    @Autowired
+    private AsyncExternalSwitchConnector asyncSwitchConnector;
+    @PostMapping("/test-performance")
+    public CompletableFuture<ResponseEntity<String>> testPerformance(@RequestBody TransactionRequest request) throws Exception {
+        return asyncSwitchConnector.sendToSwitchWithPool(
+                        messageParser.jsonToISO8583FromJson(objectMapper.writeValueAsString(request)),
+                        request.getChannel())
+                .thenApply(isoResponse -> {
+                    try {
+                        Map<String, Object> response = messageParser.iso8583ToJson(isoResponse);
+                        return ResponseEntity.ok(objectMapper.writeValueAsString(response));
+                    } catch (Exception e) {
+                        return ResponseEntity.status(500).body("{\"error\":\"" + e.getMessage() + "\"}");
+                    }
+                })
+                .orTimeout(10, TimeUnit.SECONDS);
     }
 }

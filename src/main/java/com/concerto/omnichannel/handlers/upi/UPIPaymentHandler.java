@@ -36,7 +36,7 @@ public class UPIPaymentHandler implements OperationHandler {
             String requestPayload = objectMapper.writeValueAsString(request);
 
             // Process through connector
-            String responsePayload = connector.process(requestPayload);
+            String responsePayload = connector.process(request);
 
             // Parse connector response
             @SuppressWarnings("unchecked")

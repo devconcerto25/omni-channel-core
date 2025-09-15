@@ -1,6 +1,7 @@
 package com.concerto.omnichannel.connector;
 
 import com.concerto.omnichannel.configManager.ConnectorTimeoutConfig;
+import com.concerto.omnichannel.dto.TransactionRequest;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,11 +23,11 @@ public class UPIConnector implements Connector {
     private ObjectMapper objectMapper;
 
     @Override
-    public String process(String payload) throws Exception {
+    public String process(TransactionRequest request) throws Exception {
         logger.info("Processing UPI payload");
 
         ExecutorService executor = Executors.newSingleThreadExecutor();
-        Callable<String> task = () -> processUPIMessage(payload);
+        Callable<String> task = () -> processUPIMessage(request);
 
         Future<String> future = executor.submit(task);
         try {
@@ -42,6 +43,11 @@ public class UPIConnector implements Connector {
     }
 
     @Override
+    public CompletableFuture<String> processAsync(TransactionRequest request) throws Exception {
+        return null;
+    }
+
+    @Override
     public boolean supports(String channel) {
         return "UPI".equalsIgnoreCase(channel);
     }
@@ -51,7 +57,7 @@ public class UPIConnector implements Connector {
         return "UPI_HTTP";
     }
 
-    private String processUPIMessage(String payload) throws Exception {
+    private String processUPIMessage(TransactionRequest request) throws Exception {
         // Simulate UPI processing
         logger.debug("Processing UPI payment request");
 
