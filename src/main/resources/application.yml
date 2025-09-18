@@ -69,6 +69,10 @@ resilience4j:
         baseConfig: default
         failureRateThreshold: 40
         slidingWindowSize : 20
+      HSM-operations:
+        baseConfig: default
+        failureRateThreshold: 30
+        waitDurationInOpenState: 20s
 
   retry:
     configs:
@@ -88,6 +92,10 @@ resilience4j:
       ISO8583-purchase:
         baseConfig: default
         maxAttempts: 1
+      HSM-operations:
+        baseConfig: default
+        maxAttempts: 2
+        waitDuration: 2000ms
 
   timelimiter:
     configs:
@@ -119,6 +127,11 @@ channels:
     maxRetries: 2
     circuitBreaker: true
     batchSize: 200
+  HSM:
+    timeout: 15000
+    maxRetries: 1
+    circuitBreaker: true
+    batchSize: 10
 
 # Authentication Configuration
 auth:
@@ -217,6 +230,7 @@ connector:
     BBPS: 2000               # Reduced from 3000
     UPI: 4000                # Reduced from 6000
     PG: 6000                 # Reduced from 8000
+    HSM: 15000
     default: 5000
 
 server:
@@ -237,3 +251,11 @@ async:
     max-pool-size: 200      # Increased
     queue-capacity: 1000    # Increased
     keep-alive: 60          # Seconds
+
+hsm:
+  host: ${HSM_HOST:192.168.1.100}
+  port: ${HSM_PORT:1500}
+  connection:
+    timeout: 10000
+
+

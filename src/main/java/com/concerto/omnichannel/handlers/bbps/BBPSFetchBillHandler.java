@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 @Component
 public class BBPSFetchBillHandler implements OperationHandler {
@@ -104,5 +105,10 @@ public class BBPSFetchBillHandler implements OperationHandler {
     public boolean supports(String channel, String operation) {
         return "BBPS".equalsIgnoreCase(channel) &&
                 "fetchBill".equalsIgnoreCase(operation);
+    }
+
+    @Override
+    public CompletableFuture<TransactionResponse> handleAsync(TransactionRequest request) {
+        return null;
     }
 }

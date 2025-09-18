@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 public class BBPSPayBillHandler implements OperationHandler {
 
@@ -98,5 +99,10 @@ public class BBPSPayBillHandler implements OperationHandler {
     public boolean supports(String channel, String operation) {
         return "BBPS".equalsIgnoreCase(channel) &&
                 "payBill".equalsIgnoreCase(operation);
+    }
+
+    @Override
+    public CompletableFuture<TransactionResponse> handleAsync(TransactionRequest request) {
+        return null;
     }
 }

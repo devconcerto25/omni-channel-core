@@ -1,4 +1,3 @@
-// Updated MainOrchestrator using Connector Factory Pattern
 package com.concerto.omnichannel.service;
 
 import com.concerto.omnichannel.connector.Connector;
@@ -6,6 +5,9 @@ import com.concerto.omnichannel.connector.ConnectorFactory;
 import com.concerto.omnichannel.dto.TransactionRequest;
 import com.concerto.omnichannel.dto.TransactionResponse;
 import com.concerto.omnichannel.entity.TransactionHeader;
+import com.concerto.omnichannel.operations.OperationHandler;
+import com.concerto.omnichannel.registry.OperationHandlerRegistry;
+import com.concerto.omnichannel.registry.OperationRegistry;
 import com.concerto.omnichannel.repository.TransactionHeaderRepository;
 import com.concerto.omnichannel.validation.BusinessRuleValidator;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -15,6 +17,7 @@ import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import io.github.resilience4j.retry.Retry;
 import io.github.resilience4j.retry.RetryRegistry;
 import io.github.resilience4j.timelimiter.TimeLimiterRegistry;
+import org.apache.hc.core5.http.nio.HandlerFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -75,6 +78,9 @@ public class MainOrchestrator {
     @Autowired
     private RedisTemplate<String, String> redisTemplate;
 
+    @Autowired
+    private OperationRegistry handlerRegistry;
+
     public TransactionResponse orchestrate(TransactionRequest request,
                                            String clientId,
                                            String clientSecret,
@@ -104,19 +110,26 @@ public class MainOrchestrator {
                     Duration.ofSeconds(2)
             );
 
-            if (!authenticated){
+            if (!authenticated) {
                 updateRedisWithAuthFailure(correlationId, "Authentication Failed");
                 throw new SecurityException("Authentication failed for channel: " + request.getChannel());
             }
 
             // 4. Process through connector (only essential operation)
-            Connector connector = connectorFactory.getConnector(request.getChannel());
+            /*Connector connector = connectorFactory.getConnector(request.getChannel());
             logger.info("Using connector: {} for channel: {}", connector.getConnectorType(), request.getChannel());
 
             String responsePayload = connector.process(request);
 
             // 5. Parse response (fast, CPU-bound)
-            TransactionResponse response = parseConnectorResponseSimple(responsePayload, request, correlationId);
+            TransactionResponse response = parseConnectorResponseSimple(responsePayload, request, correlationId);*/
+
+            OperationHandler handler = handlerRegistry.getHandler(request.getChannel(), request.getOperation());
+            if (handler == null) {
+                return createErrorResponse(request, null, correlationId, new Exception("Unsupported channel/operation: " + request.getChannel() + "/" + request.getOperation()));
+            }
+
+            TransactionResponse response = handler.handle(request);
 
             // 6. Store response in Redis (fast operation)
             storeResponseInRedis(correlationId, response);
@@ -166,21 +179,33 @@ public class MainOrchestrator {
                             Duration.ofSeconds(2)
                     );
 
-                    if (!authenticated){
+                    if (!authenticated) {
                         updateRedisWithAuthFailure(correlationId, "Authentication Failed");
                         throw new SecurityException("Authentication failed for channel: " + request.getChannel());
                     }
                     // Get connector and process asynchronously
-                    Connector connector = connectorFactory.getConnector(req.getChannel());
+                    /*Connector connector = connectorFactory.getConnector(req.getChannel());
                     try {
                         return connector.processAsync(req);
                     } catch (Exception e) {
                         throw new RuntimeException(e);
-                    }
+                    }*/
+
+                    return handlerRegistry.getHandlerAsync(request.getChannel(), request.getOperation())
+                            .thenCompose(handler -> {
+                                if (handler == null) {
+                                    // Return a completed future with error response instead of null
+                                    return CompletableFuture.completedFuture(
+                                            createErrorResponse(request, null, correlationId,
+                                                    new Exception("Unsupported channel/operation: " + request.getChannel() + "/" + request.getOperation()))
+                                    );
+                                }
+                                return handler.handleAsync(request);
+                            });
                 })
-                .thenApply(responsePayload -> {
+                .thenApply(response -> {
                     // Parse response and store in Redis
-                    TransactionResponse response = parseConnectorResponseSimple(responsePayload, request, correlationId);
+                   // TransactionResponse response = parseConnectorResponseSimple(responsePayload, request, correlationId);
                     storeResponseInRedis(correlationId, response);
 
                     // Trigger async persistence
@@ -406,7 +431,6 @@ public class MainOrchestrator {
     }
 
 
-
     private TransactionHeader createTransactionHeader(TransactionRequest request, String correlationId) {
         TransactionHeader header = new TransactionHeader();
         header.setChannel(request.getChannel());
@@ -519,7 +543,7 @@ public class MainOrchestrator {
                                                     Exception e) {
         TransactionResponse errorResponse = new TransactionResponse();
         errorResponse.setCorrelationId(correlationId);
-        errorResponse.setTransactionId(header.getId());
+        // errorResponse.setTransactionId(header.getId());
         errorResponse.setChannel(request.getChannel());
         errorResponse.setOperation(request.getOperation());
         errorResponse.setSuccess(false);

@@ -452,10 +452,11 @@ public class ISO8583MessageParser {
     private String getMTIForOperation(String operation) {
         return switch (operation.toLowerCase()) {
             case "purchase", "sale" -> "0200"; // Authorization Request
-            case "refund" -> "0220"; // Advice Request
+            case "refund" -> "0200"; // Advice Request
             case "balance", "balance_inquiry" -> "0100"; // Authorization Request (Balance Inquiry)
             case "withdrawal" -> "0200"; // Authorization Request (Cash Withdrawal)
             case "reversal" -> "0400"; // Reversal Request
+            case "logon" -> "0800"; // Network Request handshake etc
             default -> "0200"; // Default to Authorization Request
         };
     }
@@ -580,6 +581,7 @@ public class ISO8583MessageParser {
             case "withdrawal" -> "010000"; // Cash Withdrawal
             case "balance", "balance_inquiry" -> "310000"; // Balance Inquiry
             case "refund" -> "200000"; // Refund
+            case "logon" -> "001000";
             default -> "000000";
         };
     }

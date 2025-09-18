@@ -50,6 +50,14 @@ public class TransactionController {
     @Autowired
     private TransactionService transactionService;
 
+    @Autowired
+    private ObjectMapper objectMapper;
+    @Autowired
+    private ISO8583MessageParser messageParser;
+
+    @Autowired
+    private AsyncExternalSwitchConnector asyncSwitchConnector;
+
     @PostMapping("/process")
     @Operation(
             summary = "Process transaction",
@@ -395,24 +403,7 @@ public class TransactionController {
         return ResponseEntity.status(status).body(response);
     }
 
-    private ApiResponse<String> createErrorApiResponse(String message, String correlationId, Exception e) {
-        return ApiResponse.<String>builder()
-                .success(false)
-                .data(null)
-                .message(message)
-                .error(e.getMessage())
-                .timestamp(LocalDateTime.now())
-                .correlationId(correlationId)
-                .build();
-    }
 
-    @Autowired
-    private ObjectMapper objectMapper;
-    @Autowired
-    private ISO8583MessageParser messageParser;
-
-    @Autowired
-    private AsyncExternalSwitchConnector asyncSwitchConnector;
     @PostMapping("/test-performance")
     public CompletableFuture<ResponseEntity<String>> testPerformance(@RequestBody TransactionRequest request) throws Exception {
         return asyncSwitchConnector.sendToSwitchWithPool(

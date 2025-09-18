@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 @Component
 public class UPIPaymentHandler implements OperationHandler {
@@ -102,5 +103,10 @@ public class UPIPaymentHandler implements OperationHandler {
         return "UPI".equalsIgnoreCase(channel) &&
                 ("payment".equalsIgnoreCase(operation) ||
                         "transfer".equalsIgnoreCase(operation));
+    }
+
+    @Override
+    public CompletableFuture<TransactionResponse> handleAsync(TransactionRequest request) {
+        return null;
     }
 }

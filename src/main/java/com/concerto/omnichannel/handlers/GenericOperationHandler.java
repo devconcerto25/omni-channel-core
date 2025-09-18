@@ -13,6 +13,7 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 @Component
 @Order(Integer.MAX_VALUE) // Lowest priority - used as fallback
@@ -96,6 +97,11 @@ public class GenericOperationHandler implements OperationHandler {
         // This handler supports all channels and operations as a fallback
         // It will only be used if no specific handler is found
         return connectorFactory.hasConnector(channel);
+    }
+
+    @Override
+    public CompletableFuture<TransactionResponse> handleAsync(TransactionRequest request) {
+        return null;
     }
 
     private Boolean determineSuccessStatus(Map<String, Object> responseMap) {

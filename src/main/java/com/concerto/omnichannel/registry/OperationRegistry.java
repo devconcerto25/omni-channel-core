@@ -6,6 +6,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 @Component
 public class OperationRegistry {
@@ -23,6 +24,11 @@ public class OperationRegistry {
 
     private String getKey(String channel, String operation) {
         return channel.toUpperCase() + ":" + operation.toUpperCase();
+    }
+
+    public CompletableFuture<OperationHandler> getHandlerAsync(String channel, String operation) {
+        OperationHandler handler = handlerMap.get(getKey(channel, operation));
+        return CompletableFuture.completedFuture(handler);
     }
 }
 
